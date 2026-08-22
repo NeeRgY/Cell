@@ -1050,6 +1050,7 @@ local function CreateSetting_HealthFormat(parent)
             widget.health1ColorDropdown:SetEnabled(health1Enabled)
             widget.health1ColorPicker:SetEnabled(health1Enabled)
             widget.health1GradientCB:SetEnabled(health1Enabled)
+            widget.health1HideZeroCB:SetEnabled(health1Enabled)
 
             local health2Enabled = widget.format.health2.format ~= "none"
             widget.health2DelimiterEB:SetEnabled(health2Enabled)
@@ -1057,6 +1058,7 @@ local function CreateSetting_HealthFormat(parent)
             widget.health2ColorDropdown:SetEnabled(health2Enabled)
             widget.health2ColorPicker:SetEnabled(health2Enabled)
             widget.health2GradientCB:SetEnabled(health2Enabled)
+            widget.health2HideZeroCB:SetEnabled(health2Enabled)
             if health2Enabled then
                 widget.health2DelimiterText:SetTextColor(1, 1, 1)
             else
@@ -1171,6 +1173,13 @@ local function CreateSetting_HealthFormat(parent)
         end, L["colorByHealthTip"])
         widget.health1GradientCB:SetPoint("LEFT", widget.health1ColorPicker, "RIGHT", 10, 0)
 
+        -- only meaningful for the deficit formats, but harmless (ignored) for every other format
+        widget.health1HideZeroCB = Cell.CreateCheckButton(widget, "", function(checked)
+            widget.format.health1.hideIfEmptyOrFull = checked
+            widget.func()
+        end, L["hideIfEmptyOrFull"], L["Hide the deficit text once a unit is topped off"])
+        widget.health1HideZeroCB:SetPoint("LEFT", widget.health1GradientCB, "RIGHT", 5, 0)
+
         -- health2 ------------------------------
         widget.health2FormatDropdown = Cell.CreateDropdown(widget, 127)
         widget.health2FormatDropdown:SetPoint("TOPLEFT", widget.health1ColorDropdown, "BOTTOMLEFT", 0, -35)
@@ -1228,6 +1237,12 @@ local function CreateSetting_HealthFormat(parent)
             widget.func()
         end, L["colorByHealthTip"])
         widget.health2GradientCB:SetPoint("LEFT", widget.health2ColorPicker, "RIGHT", 10, 0)
+
+        widget.health2HideZeroCB = Cell.CreateCheckButton(widget, "", function(checked)
+            widget.format.health2.hideIfEmptyOrFull = checked
+            widget.func()
+        end, L["hideIfEmptyOrFull"], L["Hide the deficit text once a unit is topped off"])
+        widget.health2HideZeroCB:SetPoint("LEFT", widget.health2GradientCB, "RIGHT", 5, 0)
 
         -- shield -------------------------------
         local shieldList = {
@@ -1382,6 +1397,7 @@ local function CreateSetting_HealthFormat(parent)
             widget.health1ColorDropdown:SetSelectedValue(format.health1.color[1])
             widget.health1ColorPicker:SetColor(unpack(format.health1.color[2]))
             widget.health1GradientCB:SetChecked(format.health1.colorByHealth)
+            widget.health1HideZeroCB:SetChecked(format.health1.hideIfEmptyOrFull)
 
             -- health2
             widget.health2FormatDropdown:SetSelectedValue(format.health2.format)
@@ -1389,6 +1405,7 @@ local function CreateSetting_HealthFormat(parent)
             widget.health2ColorDropdown:SetSelectedValue(format.health2.color[1])
             widget.health2ColorPicker:SetColor(unpack(format.health2.color[2]))
             widget.health2GradientCB:SetChecked(format.health2.colorByHealth)
+            widget.health2HideZeroCB:SetChecked(format.health2.hideIfEmptyOrFull)
 
             -- shields
             widget.shieldFormatDropdown:SetSelectedValue(format.shields.format)

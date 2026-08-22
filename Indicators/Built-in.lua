@@ -1958,17 +1958,27 @@ local formatter = {
     ["health_percent"] = function(pattern, _, health, maxHealth, absorbs, healAbsorbs)
         return pattern:format(F.Round(health / maxHealth * 100))
     end,
-    ["deficit"] = function(pattern, _, health, maxHealth, absorbs, healAbsorbs)
-        return pattern:format(health - maxHealth)
+    -- hideIfZero (the segment's "Hide if 0" setting): suppress the deficit text entirely
+    -- once a unit is topped off, instead of always showing "-0" / "0%".
+    ["deficit"] = function(pattern, hideIfZero, health, maxHealth, absorbs, healAbsorbs)
+        local deficit = health - maxHealth
+        if hideIfZero and deficit == 0 then return "" end
+        return pattern:format(deficit)
     end,
-    ["deficit_short"] = function(pattern, _, health, maxHealth, absorbs, healAbsorbs)
-        return pattern:format(F.FormatNumber(health - maxHealth))
+    ["deficit_short"] = function(pattern, hideIfZero, health, maxHealth, absorbs, healAbsorbs)
+        local deficit = health - maxHealth
+        if hideIfZero and deficit == 0 then return "" end
+        return pattern:format(F.FormatNumber(deficit))
     end,
-    ["deficit_short2"] = function(pattern, _, health, maxHealth, absorbs, healAbsorbs)
-        return pattern:format(F.FormatNumber(health - maxHealth, 2))
+    ["deficit_short2"] = function(pattern, hideIfZero, health, maxHealth, absorbs, healAbsorbs)
+        local deficit = health - maxHealth
+        if hideIfZero and deficit == 0 then return "" end
+        return pattern:format(F.FormatNumber(deficit, 2))
     end,
-    ["deficit_percent"] = function(pattern, _, health, maxHealth, absorbs, healAbsorbs)
-        return pattern:format(F.Round((health - maxHealth) / maxHealth * 100))
+    ["deficit_percent"] = function(pattern, hideIfZero, health, maxHealth, absorbs, healAbsorbs)
+        local deficit = health - maxHealth
+        if hideIfZero and deficit == 0 then return "" end
+        return pattern:format(F.Round(deficit / maxHealth * 100))
     end,
 
     -- effective health
@@ -2116,6 +2126,10 @@ local function HealthText_SetFormat(self, format)
     self.shields = BuildPattern(format.shields)
     self.healAbsorbs = BuildPattern(format.healAbsorbs)
 
+    -- hideIfEmptyOrFull: for deficit formats, suppress the "-0"/"0%" text once a unit is topped off
+    self.health1HideIfZero = format.health1.hideIfEmptyOrFull and true or false
+    self.health2HideIfZero = format.health2.hideIfEmptyOrFull and true or false
+
     -- colorByHealth: remember which segments need their color recomputed every update
     -- (against the segment's own class/custom base color) instead of the baked-in one
     self.health1GradientColor = format.health1.colorByHealth and format.health1.color or nil
@@ -2231,14 +2245,14 @@ local function HealthText_SetValue(self, health, maxHealth, shields, healAbsorbs
     if self.health1GradientColor or self.health2GradientColor or self.shieldsGradientColor or self.healAbsorbsGradientColor then
         local percent = health / maxHealth
         self.text:SetFormattedText("%s%s%s%s",
-            ApplyHealthGradientColor(self.GetHealth1(self.health1, false, health, maxHealth, shields, healAbsorbs), self.health1GradientColor, percent, unit),
-            ApplyHealthGradientColor(self.GetHealth2(self.health2, false, health, maxHealth, shields, healAbsorbs), self.health2GradientColor, percent, unit),
+            ApplyHealthGradientColor(self.GetHealth1(self.health1, self.health1HideIfZero, health, maxHealth, shields, healAbsorbs), self.health1GradientColor, percent, unit),
+            ApplyHealthGradientColor(self.GetHealth2(self.health2, self.health2HideIfZero, health, maxHealth, shields, healAbsorbs), self.health2GradientColor, percent, unit),
             ApplyHealthGradientColor(self.GetShields(self.shields, health, maxHealth, shields, healAbsorbs), self.shieldsGradientColor, percent, unit),
             ApplyHealthGradientColor(self.GetHealAbsorbs(self.healAbsorbs, health, maxHealth, shields, healAbsorbs), self.healAbsorbsGradientColor, percent, unit))
     else
         self.text:SetFormattedText("%s%s%s%s",
-            self.GetHealth1(self.health1, false, health, maxHealth, shields, healAbsorbs),
-            self.GetHealth2(self.health2, false, health, maxHealth, shields, healAbsorbs),
+            self.GetHealth1(self.health1, self.health1HideIfZero, health, maxHealth, shields, healAbsorbs),
+            self.GetHealth2(self.health2, self.health2HideIfZero, health, maxHealth, shields, healAbsorbs),
             self.GetShields(self.shields, health, maxHealth, shields, healAbsorbs),
             self.GetHealAbsorbs(self.healAbsorbs, health, maxHealth, shields, healAbsorbs))
     end

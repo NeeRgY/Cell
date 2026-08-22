@@ -158,13 +158,13 @@ Cell.defaults.layout = {
                     ["format"] = "effective_percent",
                     ["color"] = {"custom_color", {1, 1, 1}},
                     ["colorByHealth"] = false,
-                    ["hideIfEmptyOrFull"] = false,
+                    ["hideIfEmptyOrFull"] = true,
                 },
                 ["health2"] = {
                     ["format"] = "none",
                     ["color"] = {"custom_color", {1, 1, 1}},
                     ["colorByHealth"] = false,
-                    ["hideIfEmptyOrFull"] = false,
+                    ["hideIfEmptyOrFull"] = true,
                     ["delimiter"] = " ",
                 },
                 ["shields"] = {
