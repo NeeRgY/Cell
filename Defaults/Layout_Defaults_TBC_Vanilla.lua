@@ -155,22 +155,26 @@ Cell.defaults.layout = {
                 ["health1"] = {
                     ["format"] = "effective_percent",
                     ["color"] = {"custom_color", {1, 1, 1}},
+                    ["colorByHealth"] = false,
                     ["hideIfEmptyOrFull"] = false,
                 },
                 ["health2"] = {
                     ["format"] = "none",
                     ["color"] = {"custom_color", {1, 1, 1}},
+                    ["colorByHealth"] = false,
                     ["hideIfEmptyOrFull"] = false,
                     ["delimiter"] = " ",
                 },
                 ["shields"] = {
                     ["format"] = "none",
                     ["color"] = {"custom_color", {0, 1, 0}},
+                    ["colorByHealth"] = false,
                     ["delimiter"] = "+",
                 },
                 ["healAbsorbs"] = {
                     ["format"] = "none",
                     ["color"] = {"custom_color", {1, 0, 0}},
+                    ["colorByHealth"] = false,
                     ["delimiter"] = "-",
                 },
             },

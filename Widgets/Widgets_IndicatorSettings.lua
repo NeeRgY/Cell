@@ -941,6 +941,7 @@ local function CreateSetting_TextWidth(parent)
 end
 
 
+
 local function CreateSetting_Alpha(parent)
     local widget
 
@@ -1048,12 +1049,14 @@ local function CreateSetting_HealthFormat(parent)
             local health1Enabled = widget.format.health1.format ~= "none"
             widget.health1ColorDropdown:SetEnabled(health1Enabled)
             widget.health1ColorPicker:SetEnabled(health1Enabled)
+            widget.health1GradientCB:SetEnabled(health1Enabled)
 
             local health2Enabled = widget.format.health2.format ~= "none"
             widget.health2DelimiterEB:SetEnabled(health2Enabled)
             widget.health2DelimiterEB.confirmBtn:Hide()
             widget.health2ColorDropdown:SetEnabled(health2Enabled)
             widget.health2ColorPicker:SetEnabled(health2Enabled)
+            widget.health2GradientCB:SetEnabled(health2Enabled)
             if health2Enabled then
                 widget.health2DelimiterText:SetTextColor(1, 1, 1)
             else
@@ -1065,6 +1068,7 @@ local function CreateSetting_HealthFormat(parent)
             widget.shieldDelimiterEB.confirmBtn:Hide()
             widget.shieldColorDropdown:SetEnabled(shieldEnabled)
             widget.shieldColorPicker:SetEnabled(shieldEnabled)
+            widget.shieldGradientCB:SetEnabled(shieldEnabled)
             if shieldEnabled then
                 widget.shieldDelimiterText:SetTextColor(1, 1, 1)
             else
@@ -1076,6 +1080,7 @@ local function CreateSetting_HealthFormat(parent)
             widget.healAbsorbDelimiterEB.confirmBtn:Hide()
             widget.healAbsorbColorDropdown:SetEnabled(healAbsorbEnabled)
             widget.healAbsorbColorPicker:SetEnabled(healAbsorbEnabled)
+            widget.healAbsorbGradientCB:SetEnabled(healAbsorbEnabled)
             if healAbsorbEnabled then
                 widget.healAbsorbDelimiterText:SetTextColor(1, 1, 1)
             else
@@ -1156,6 +1161,12 @@ local function CreateSetting_HealthFormat(parent)
         end)
         widget.health1ColorPicker:SetPoint("LEFT", widget.health1ColorDropdown, "RIGHT", 5, 0)
 
+        widget.health1GradientCB = Cell.CreateCheckButton(widget, "", function(checked)
+            widget.format.health1.colorByHealth = checked
+            widget.func()
+        end, L["colorByHealthTip"])
+        widget.health1GradientCB:SetPoint("LEFT", widget.health1ColorPicker, "RIGHT", 10, 0)
+
         -- health2 ------------------------------
         widget.health2FormatDropdown = Cell.CreateDropdown(widget, 127)
         widget.health2FormatDropdown:SetPoint("TOPLEFT", widget.health1ColorDropdown, "BOTTOMLEFT", 0, -35)
@@ -1207,6 +1218,12 @@ local function CreateSetting_HealthFormat(parent)
             widget.func()
         end)
         widget.health2ColorPicker:SetPoint("LEFT", widget.health2ColorDropdown, "RIGHT", 5, 0)
+
+        widget.health2GradientCB = Cell.CreateCheckButton(widget, "", function(checked)
+            widget.format.health2.colorByHealth = checked
+            widget.func()
+        end, L["colorByHealthTip"])
+        widget.health2GradientCB:SetPoint("LEFT", widget.health2ColorPicker, "RIGHT", 10, 0)
 
         -- shield -------------------------------
         local shieldList = {
@@ -1270,6 +1287,12 @@ local function CreateSetting_HealthFormat(parent)
         end)
         widget.shieldColorPicker:SetPoint("LEFT", widget.shieldColorDropdown, "RIGHT", 5, 0)
 
+        widget.shieldGradientCB = Cell.CreateCheckButton(widget, "", function(checked)
+            widget.format.shields.colorByHealth = checked
+            widget.func()
+        end, L["colorByHealthTip"])
+        widget.shieldGradientCB:SetPoint("LEFT", widget.shieldColorPicker, "RIGHT", 10, 0)
+
         -- heal absorb --------------------------
         local healAbsorbList = {
             {L["None"], "none"},
@@ -1332,6 +1355,12 @@ local function CreateSetting_HealthFormat(parent)
         end)
         widget.healAbsorbColorPicker:SetPoint("LEFT", widget.healAbsorbColorDropdown, "RIGHT", 5, 0)
 
+        widget.healAbsorbGradientCB = Cell.CreateCheckButton(widget, "", function(checked)
+            widget.format.healAbsorbs.colorByHealth = checked
+            widget.func()
+        end, L["colorByHealthTip"])
+        widget.healAbsorbGradientCB:SetPoint("LEFT", widget.healAbsorbColorPicker, "RIGHT", 10, 0)
+
         -- callback
         function widget:SetFunc(func)
             widget.func = func
@@ -1346,24 +1375,28 @@ local function CreateSetting_HealthFormat(parent)
             widget.health1FormatDropdown:SetSelectedValue(format.health1.format)
             widget.health1ColorDropdown:SetSelectedValue(format.health1.color[1])
             widget.health1ColorPicker:SetColor(unpack(format.health1.color[2]))
+            widget.health1GradientCB:SetChecked(format.health1.colorByHealth)
 
             -- health2
             widget.health2FormatDropdown:SetSelectedValue(format.health2.format)
             widget.health2DelimiterEB:SetText(format.health2.delimiter)
             widget.health2ColorDropdown:SetSelectedValue(format.health2.color[1])
             widget.health2ColorPicker:SetColor(unpack(format.health2.color[2]))
+            widget.health2GradientCB:SetChecked(format.health2.colorByHealth)
 
             -- shields
             widget.shieldFormatDropdown:SetSelectedValue(format.shields.format)
             widget.shieldDelimiterEB:SetText(format.shields.delimiter)
             widget.shieldColorDropdown:SetSelectedValue(format.shields.color[1])
             widget.shieldColorPicker:SetColor(unpack(format.shields.color[2]))
+            widget.shieldGradientCB:SetChecked(format.shields.colorByHealth)
 
             -- heal absorbs
             widget.healAbsorbFormatDropdown:SetSelectedValue(format.healAbsorbs.format)
             widget.healAbsorbDelimiterEB:SetText(format.healAbsorbs.delimiter)
             widget.healAbsorbColorDropdown:SetSelectedValue(format.healAbsorbs.color[1])
             widget.healAbsorbColorPicker:SetColor(unpack(format.healAbsorbs.color[2]))
+            widget.healAbsorbGradientCB:SetChecked(format.healAbsorbs.colorByHealth)
         end
     else
         widget = settingWidgets["healthFormat"]
@@ -1523,6 +1556,7 @@ local function CreateSetting_DurationVisibility(parent)
     return widget
 end
 
+-- Midnight: simplified duration visibility with only Always/Never options
 -- (Blizzard's countdown text doesn't support percentage/time thresholds)
 local function CreateSetting_DurationVisibilitySimple(parent)
     local widget
@@ -1559,6 +1593,7 @@ local function CreateSetting_DurationVisibilitySimple(parent)
         end
 
         function widget:SetDBValue(durationVisibility)
+            -- Coerce pre-Midnight threshold values (0.75, 10, etc.) to "Always"
             -- since Blizzard's countdown text only supports on/off, not thresholds.
             -- The saved value isn't modified — only the dropdown display is coerced.
             if durationVisibility and durationVisibility ~= false then
@@ -1734,35 +1769,21 @@ local function CreateSetting_BarOrientation(parent)
         widget = Cell.CreateFrame("CellIndicatorSettings_BarOrientation", parent, 240, 50)
         settingWidgets["barOrientation"] = widget
 
-        widget.orientation = Cell.CreateDropdown(widget, 245)
+        widget.orientation = Cell.CreateDropdown(widget, 153)
         widget.orientation:SetPoint("TOPLEFT", 5, -20)
         widget.orientation:SetItems({
             {
-                ["text"] = L["left-to-right"],
-                ["value"] = "left-to-right",
+                ["text"] = L["Horizontal"],
+                ["value"] = "horizontal",
                 ["onClick"] = function()
-                    widget.func("left-to-right")
+                    widget.func("horizontal")
                 end,
             },
             {
-                ["text"] = L["right-to-left"],
-                ["value"] = "right-to-left",
+                ["text"] = L["Vertical"],
+                ["value"] = "vertical",
                 ["onClick"] = function()
-                    widget.func("right-to-left")
-                end,
-            },
-            {
-                ["text"] = L["top-to-bottom"],
-                ["value"] = "top-to-bottom",
-                ["onClick"] = function()
-                    widget.func("top-to-bottom")
-                end,
-            },
-            {
-                ["text"] = L["bottom-to-top"],
-                ["value"] = "bottom-to-top",
-                ["onClick"] = function()
-                    widget.func("bottom-to-top")
+                    widget.func("vertical")
                 end,
             },
         })
@@ -1778,11 +1799,6 @@ local function CreateSetting_BarOrientation(parent)
 
         -- show db value
         function widget:SetDBValue(orientation)
-            if orientation == "horizontal" then
-                orientation = "left-to-right"
-            elseif orientation == "vertical" then
-                orientation = "top-to-bottom"
-            end
             widget.orientation:SetSelectedValue(orientation)
         end
     else
@@ -4777,7 +4793,7 @@ local function CreateSetting_Auras(parent, index)
     -- show db value
     function widget:SetDBValue(title, t, noUpDownButtons, isZeroValid, hasColorPicker)
         widget.title = title
-        widget.t = t or {}
+        widget.t = t
         widget.noUpDownButtons = noUpDownButtons
         widget.isZeroValid = isZeroValid
         widget.hasColorPicker = hasColorPicker
@@ -4786,14 +4802,14 @@ local function CreateSetting_Auras(parent, index)
 
         if not auraButtons[index] then auraButtons[index] = {} end
 
-        CreateAuraButtons(widget.frame, auraButtons[index], widget.t, noUpDownButtons, isZeroValid, hasColorPicker, function(n, diff)
+        CreateAuraButtons(widget.frame, auraButtons[index], t, noUpDownButtons, isZeroValid, hasColorPicker, function(n, diff)
             local height = (n + 1) * P.Scale(20) - n * P.Scale(1)
             widget.frame:SetHeight(height)
             widget:SetHeight(height + P.Scale(22) + P.Scale(7))
             if diff then parent:SetHeight(parent:GetHeight() + P.Scale(diff)) end
         end, widget.usePicker)
 
-        local height = (#widget.t + 1) * P.Scale(20) - #widget.t * P.Scale(1)
+        local height = (#t + 1) * P.Scale(20) - #t * P.Scale(1)
         widget.frame:SetHeight(height)
         widget:SetHeight(height + P.Scale(22) + P.Scale(7))
     end
@@ -8059,6 +8075,7 @@ function Cell.CreateIndicatorSettings(parent, settingsTable)
         elseif string.find(setting, "^numPerLine:") then
             tinsert(widgetsTable, CreateSetting_NumPerLine(parent))
         elseif string.find(setting, "^font%-noOffset:") then
+            -- Midnight: simplified font widget for paired font configs (no anchor/offset)
             tinsert(widgetsTable, CreateSetting_FontNoOffset(parent))
         elseif string.find(setting, "^font") then
             tinsert(widgetsTable, CreateSetting_Font(parent, string.match(setting, "^(font%d?):?.*$")))

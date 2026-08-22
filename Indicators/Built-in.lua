@@ -2019,7 +2019,8 @@ local function BuildPattern(config)
 
     local suffix = config.format:find("percent$") and "%%" or ""
 
-    if config.color[1] == "class_color" then
+    -- colorByHealth: color is computed dynamically per update (see ApplyHealthGradientColor), so leave it unbaked here
+    if config.colorByHealth or config.color[1] == "class_color" then
         return prefix .. "%s" .. suffix
     else
         return prefix .. "|cff" .. F.ConvertRGBToHEX(F.ConvertRGB_256(unpack(config.color[2]))) .. "%s" .. suffix .. "|r"
@@ -2043,6 +2044,9 @@ local function BuildSecretSegment(config)
 
     local isPercent = config.format:find("percent$") and true or false
 
+    -- colorByHealth needs live (secret-safe) percent evaluation which isn't available at C-level
+    -- here, so secret segments just fall back to their static base color (no gradient),
+    -- same as when colorByHealth is off - class_color still relies on the fontstring's ambient tint.
     local colorStart, colorEnd
     if config.color[1] == "class_color" then
         colorStart, colorEnd = "", ""
@@ -2095,6 +2099,14 @@ local function HealthText_SetFormat(self, format)
     self.shields = BuildPattern(format.shields)
     self.healAbsorbs = BuildPattern(format.healAbsorbs)
 
+    -- colorByHealth: remember which segments need their color recomputed every update
+    -- (against the segment's own class/custom base color) instead of the baked-in one
+    self.health1GradientColor = format.health1.colorByHealth and format.health1.color or nil
+    self.health2GradientColor = format.health2.colorByHealth and format.health2.color or nil
+    self.shieldsGradientColor = format.shields.colorByHealth and format.shields.color or nil
+    self.healAbsorbsGradientColor = format.healAbsorbs.colorByHealth and format.healAbsorbs.color or nil
+
+    -- Pre-build C-level format segments for use when values are secret.
     -- Each active component gets a segment with a %d/%s placeholder.
     -- Stored individually so the render path can skip zero-value absorb components.
     local segments = {}
@@ -2114,6 +2126,26 @@ local function HealthText_SetFormat(self, format)
         self._secretArgKeys = nil
     end
 
+end
+
+-- Wraps an already-formatted segment string with a color computed from the current
+-- health percent (ElvUI-style red -> yellow -> base color), when colorByHealth is enabled
+-- for that segment. `colorConfig` is the segment's {mode, {r,g,b}} color table, or nil.
+local function ApplyHealthGradientColor(text, colorConfig, percent, unit)
+    if text == "" or not colorConfig then
+        return text
+    end
+
+    local r, g, b
+    if colorConfig[1] == "class_color" then
+        -- no live unit in the settings preview (e.g. widget:SetValue with a fake sample) - fall back to the player's class
+        r, g, b = unit and F.GetUnitClassColor(unit) or F.GetClassColor(Cell.vars.playerClass)
+    else
+        r, g, b = colorConfig[2][1], colorConfig[2][2], colorConfig[2][3]
+    end
+    r, g, b = F.GetHealthTextColor(percent, r, g, b)
+
+    return "|cff" .. F.ConvertRGBToHEX(F.ConvertRGB_256(r, g, b)) .. text .. "|r"
 end
 
 local function HealthText_SetValue(self, health, maxHealth, shields, healAbsorbs, unit)
@@ -2179,11 +2211,20 @@ local function HealthText_SetValue(self, health, maxHealth, shields, healAbsorbs
     end
     maxHealth = maxHealth == 0 and 1 or maxHealth
 
-    self.text:SetFormattedText("%s%s%s%s",
-        self.GetHealth1(self.health1, false, health, maxHealth, shields, healAbsorbs),
-        self.GetHealth2(self.health2, false, health, maxHealth, shields, healAbsorbs),
-        self.GetShields(self.shields, health, maxHealth, shields, healAbsorbs),
-        self.GetHealAbsorbs(self.healAbsorbs, health, maxHealth, shields, healAbsorbs))
+    if self.health1GradientColor or self.health2GradientColor or self.shieldsGradientColor or self.healAbsorbsGradientColor then
+        local percent = health / maxHealth
+        self.text:SetFormattedText("%s%s%s%s",
+            ApplyHealthGradientColor(self.GetHealth1(self.health1, false, health, maxHealth, shields, healAbsorbs), self.health1GradientColor, percent, unit),
+            ApplyHealthGradientColor(self.GetHealth2(self.health2, false, health, maxHealth, shields, healAbsorbs), self.health2GradientColor, percent, unit),
+            ApplyHealthGradientColor(self.GetShields(self.shields, health, maxHealth, shields, healAbsorbs), self.shieldsGradientColor, percent, unit),
+            ApplyHealthGradientColor(self.GetHealAbsorbs(self.healAbsorbs, health, maxHealth, shields, healAbsorbs), self.healAbsorbsGradientColor, percent, unit))
+    else
+        self.text:SetFormattedText("%s%s%s%s",
+            self.GetHealth1(self.health1, false, health, maxHealth, shields, healAbsorbs),
+            self.GetHealth2(self.health2, false, health, maxHealth, shields, healAbsorbs),
+            self.GetShields(self.shields, health, maxHealth, shields, healAbsorbs),
+            self.GetHealAbsorbs(self.healAbsorbs, health, maxHealth, shields, healAbsorbs))
+    end
     self:SetWidth(self.text:GetStringWidth())
 end
 

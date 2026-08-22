@@ -1435,6 +1435,14 @@ function F.GetHealthBarColor(percent, isDeadOrGhost, r, g, b)
     return barR, barG, barB, lossR, lossG, lossB
 end
 
+-- ElvUI-style health text coloring: red at 0% health, yellow at 50%, original color (e.g. class color) at 100%
+function F.GetHealthTextColor(percent, r, g, b)
+    if not Cell.loaded then
+        return r, g, b
+    end
+    return F.ColorGradient(percent or 1, {1, 0, 0}, {1, 1, 0}, {r, g, b})
+end
+
 -------------------------------------------------
 -- units
 -------------------------------------------------
