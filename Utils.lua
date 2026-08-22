@@ -454,23 +454,25 @@ end
 local abs = math.abs
 
 if Cell.isAsian then
-    function F.FormatNumber(n)
+    function F.FormatNumber(n, decimals)
+        decimals = decimals or 1
         if abs(n) >= 100000000 then
-            return F.Round(n / 100000000, 2) .. symbol_1B
+            return F.Round(n / 100000000, decimals) .. symbol_1B
         elseif abs(n) >= 10000 then
-            return F.Round(n / 10000, 1) .. symbol_10K
+            return F.Round(n / 10000, decimals) .. symbol_10K
         else
             return n
         end
     end
 else
-    function F.FormatNumber(n)
+    function F.FormatNumber(n, decimals)
+        decimals = decimals or 1
         if abs(n) >= 1000000000 then
-            return F.Round(n / 1000000000, 2) .. "B"
+            return F.Round(n / 1000000000, decimals) .. "B"
         elseif abs(n) >= 1000000 then
-            return F.Round(n / 1000000, 2) .. "M"
+            return F.Round(n / 1000000, decimals) .. "M"
         elseif abs(n) >= 1000 then
-            return F.Round(n / 1000, 1) .. "K"
+            return F.Round(n / 1000, decimals) .. "K"
         else
             return n
         end

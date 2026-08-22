@@ -1952,6 +1952,9 @@ local formatter = {
     ["health_short"] = function(pattern, _, health, maxHealth, absorbs, healAbsorbs)
         return pattern:format(F.FormatNumber(health))
     end,
+    ["health_short2"] = function(pattern, _, health, maxHealth, absorbs, healAbsorbs)
+        return pattern:format(F.FormatNumber(health, 2))
+    end,
     ["health_percent"] = function(pattern, _, health, maxHealth, absorbs, healAbsorbs)
         return pattern:format(F.Round(health / maxHealth * 100))
     end,
@@ -1960,6 +1963,9 @@ local formatter = {
     end,
     ["deficit_short"] = function(pattern, _, health, maxHealth, absorbs, healAbsorbs)
         return pattern:format(F.FormatNumber(health - maxHealth))
+    end,
+    ["deficit_short2"] = function(pattern, _, health, maxHealth, absorbs, healAbsorbs)
+        return pattern:format(F.FormatNumber(health - maxHealth, 2))
     end,
     ["deficit_percent"] = function(pattern, _, health, maxHealth, absorbs, healAbsorbs)
         return pattern:format(F.Round((health - maxHealth) / maxHealth * 100))
@@ -1971,6 +1977,9 @@ local formatter = {
     end,
     ["effective_short"] = function(pattern, _, health, maxHealth, absorbs, healAbsorbs)
         return pattern:format(F.FormatNumber(health + absorbs - healAbsorbs))
+    end,
+    ["effective_short2"] = function(pattern, _, health, maxHealth, absorbs, healAbsorbs)
+        return pattern:format(F.FormatNumber(health + absorbs - healAbsorbs, 2))
     end,
     ["effective_percent"] = function(pattern, _, health, maxHealth, absorbs, healAbsorbs)
         return pattern:format(F.Round((health + absorbs - healAbsorbs) / maxHealth * 100))
@@ -1985,6 +1994,10 @@ local formatter = {
         if absorbs == 0 then return "" end
         return pattern:format(F.FormatNumber(absorbs))
     end,
+    ["shields_short2"] = function(pattern, health, maxHealth, absorbs, healAbsorbs)
+        if absorbs == 0 then return "" end
+        return pattern:format(F.FormatNumber(absorbs, 2))
+    end,
     ["shields_percent"] = function(pattern, health, maxHealth, absorbs, healAbsorbs)
         if absorbs == 0 then return "" end
         return pattern:format(F.Round(absorbs / maxHealth * 100))
@@ -1998,6 +2011,10 @@ local formatter = {
     ["healabsorbs_short"] = function(pattern, health, maxHealth, absorbs, healAbsorbs)
         if healAbsorbs == 0 then return "" end
         return pattern:format(F.FormatNumber(healAbsorbs))
+    end,
+    ["healabsorbs_short2"] = function(pattern, health, maxHealth, absorbs, healAbsorbs)
+        if healAbsorbs == 0 then return "" end
+        return pattern:format(F.FormatNumber(healAbsorbs, 2))
     end,
     ["healabsorbs_percent"] = function(pattern, health, maxHealth, absorbs, healAbsorbs)
         if healAbsorbs == 0 then return "" end

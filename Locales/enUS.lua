@@ -27,6 +27,7 @@ select(2, ...).L = setmetatable({
     ["nonPlayerAuras"] = "Only show non-player auras",
     ["nonPlayerAurasTip"] = "Hides lust aftereffects such as Exhaustion, Sated, Forbearance and Temporal Displacement. Encounter debuffs stay visible.",
     ["colorByHealthTip"] = "Blend this segment's color from red (low health) to yellow to its normal color as health rises, like ElvUI.",
+    ["2 Decimals"] = "2 Decimals",
     ["Private Dispel Overlay"] = "Private Dispel Overlay",
     ["Show private dispel overlay"] = "Show private dispel overlay",
     ["Only dispellable by me"] = "Only dispellable by me",

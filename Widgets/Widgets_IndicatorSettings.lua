@@ -1105,18 +1105,22 @@ local function CreateSetting_HealthFormat(parent)
         end
 
         local effective = " |cff7b7b7b" .. L["Effective"] .. "|r"
+        local decimals2 = " |cff7b7b7b(" .. L["2 Decimals"] .. ")|r"
         local healthList = {
             {L["None"], "none"},
             {(health + shield - healAbsorb) .. effective, "effective"},
             {F.FormatNumber(health + shield - healAbsorb) .. effective, "effective_short"},
+            {F.FormatNumber(health + shield - healAbsorb, 2) .. effective .. decimals2, "effective_short2"},
             {F.Round((health + shield - healAbsorb) / healthMax * 100) .. "%" .. effective, "effective_percent"},
             {F.Round((health + shield - healAbsorb) / healthMax * 100) .. effective, "effective_percent_no_sign"},
             {health, "health"},
             {F.FormatNumber(health), "health_short"},
+            {F.FormatNumber(health, 2) .. decimals2, "health_short2"},
             {F.Round(health / healthMax * 100) .. "%", "health_percent"},
             {F.Round(health / healthMax * 100), "health_percent_no_sign"},
             {health - healthMax, "deficit"},
             {F.FormatNumber(health - healthMax), "deficit_short"},
+            {F.FormatNumber(health - healthMax, 2) .. decimals2, "deficit_short2"},
             {F.Round((health - healthMax) / healthMax * 100) .. "%", "deficit_percent"},
             {F.Round((health - healthMax) / healthMax * 100), "deficit_percent_no_sign"},
         }
@@ -1230,6 +1234,7 @@ local function CreateSetting_HealthFormat(parent)
             {L["None"], "none"},
             {shield, "shields"},
             {F.FormatNumber(shield), "shields_short"},
+            {F.FormatNumber(shield, 2) .. decimals2, "shields_short2"},
             {F.Round(shield / healthMax * 100) .. "%", "shields_percent"},
             {F.Round(shield / healthMax * 100), "shields_percent_no_sign"},
         }
@@ -1298,6 +1303,7 @@ local function CreateSetting_HealthFormat(parent)
             {L["None"], "none"},
             {healAbsorb, "healabsorbs"},
             {F.FormatNumber(healAbsorb), "healabsorbs_short"},
+            {F.FormatNumber(healAbsorb, 2) .. decimals2, "healabsorbs_short2"},
             {F.Round(healAbsorb / healthMax * 100) .. "%", "healabsorbs_percent"},
             {F.Round(healAbsorb / healthMax * 100), "healabsorbs_percent_no_sign"},
         }
