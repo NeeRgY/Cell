@@ -249,12 +249,26 @@ local function HandleIndicators(b)
                 P.Size(indicator, t["size"][1], t["size"][2])
             end
         end
-        -- update thickness
+        -- update thickness (+ dispel border on/off for debuffs, "off" = 0 thickness)
+        --! same as retail UnitButton.lua: without this the dispel-type border came back on every time the
+        --! indicators were (re)created - first group after a reload, layout switch - whatever the setting.
         if t["thickness"] then
-            indicator:SetThickness(t["thickness"])
+            if t["indicatorName"] == "debuffs" then
+                if indicator.SetBorder then
+                    local on = t["showDispelBorder"] ~= false
+                    indicator:SetBorder(on and t["thickness"] or 0)
+                end
+            elseif t["indicatorName"] == "dispels" then
+                if indicator.SetFrameBorderThickness then
+                    indicator:SetFrameBorderThickness(t["thickness"])
+                    indicator:SetFrameBorderEnabled(t["showDispelFrameBorder"] == true)
+                end
+            else
+                indicator:SetThickness(t["thickness"])
+            end
         end
         -- update border
-        if t["border"] then
+        if t["border"] and indicator.SetBorder then
             indicator:SetBorder(t["border"])
         end
         -- update height
