@@ -212,6 +212,15 @@ function F.IsGroupTypeHidden(layoutGroupType)
     return layoutGroupType and Cell.vars.layoutAutoSwitch and Cell.vars.layoutAutoSwitch[layoutGroupType] == "hide"
 end
 
+--! The layout a frame group has to be laid out for, from the same mapping: nil when that entry is "hide"
+--! (or unknown), so a frame group can lay itself out ahead of time for a group type the player is not in.
+function F.GetGroupTypeLayout(layoutGroupType)
+    local layout = layoutGroupType and Cell.vars.layoutAutoSwitch and Cell.vars.layoutAutoSwitch[layoutGroupType]
+    if layout and layout ~= "hide" and CellDB["layouts"][layout] then
+        return layout
+    end
+end
+
 local bgMaxPlayers = {
     [2197] = 40, -- ç§‘å°”æ‹‰å…‹çš„å¤ä»‡
 }

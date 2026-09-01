@@ -279,8 +279,9 @@ function F.GetRaidFramePoints(layout)
     return point, anchorPoint, groupAnchorPoint, P.Scale(unitSpacing), P.Scale(groupSpacing), P.Scale(unitSpacingX), P.Scale(unitSpacingY), verticalSpacing, horizontalSpacing, headerPoint, headerColumnAnchorPoint
 end
 
-local function UpdateHeadersShowRaidAttribute()
-    if Cell.vars.currentLayoutTable["main"]["combineGroups"] then
+local function UpdateHeadersShowRaidAttribute(layout)
+    -- NOTE: layout table passed in, the raid frame can be laid out for a layout that is not the current one
+    if layout["main"]["combineGroups"] then
         combinedHeader:SetAttribute("showRaid", true)
         for _, header in ipairs(separatedHeaders) do
             header:SetAttribute("showRaid", nil)
@@ -366,7 +367,20 @@ local function RaidFrame_UpdateLayout(layout, which)
             RegisterAttributeDriver(raidFrame, "state-visibility", "[@raid1,exists] show;hide")
         end
 
-        if Cell.vars.groupType ~= "raid" then return end
+        -- Layout: applied for every frame group, not only the active one, so that the first show of a group
+        -- type since login can happen in combat. F.UpdateLayout defers itself until combat ends, so a raid frame
+        -- that had never been active came up with no sizes, anchors or header attributes when the group changed
+        -- in combat, and stayed blank until combat ended. See F.GetGroupTypeLayout.
+        if Cell.vars.groupType ~= "raid" then
+            local ownLayout = F.GetGroupTypeLayout(Cell.vars.raidLayoutGroupType)
+            if not ownLayout then return end
+            if which then
+                -- partial update from the Layouts tab: only relevant when the edited layout is the one used here
+                if layout ~= ownLayout then return end
+            else
+                layout = ownLayout
+            end
+        end
     end
 
     -- update
@@ -414,7 +428,7 @@ local function RaidFrame_UpdateLayout(layout, which)
     end
 
     if not which or which == "header" then
-        UpdateHeadersShowRaidAttribute()
+        UpdateHeadersShowRaidAttribute(layout)
     end
 
     if layout["main"]["combineGroups"] then

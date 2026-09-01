@@ -44,7 +44,20 @@ local function SoloFrame_UpdateLayout(layout, which)
             RegisterAttributeDriver(soloFrame, "state-visibility", "[@raid1,exists] hide;[@party1,exists] hide;[group] hide;show")
         end
 
-        if Cell.vars.groupType ~= "solo" then return end
+        -- Layout: applied for every frame group, not only the active one, so that the first show of a group
+        -- type since login can happen in combat. F.UpdateLayout defers itself until combat ends, so a solo frame
+        -- that had never been active came up with no sizes, anchors or header attributes when the group changed
+        -- in combat, and stayed blank until combat ended. See F.GetGroupTypeLayout.
+        if Cell.vars.groupType ~= "solo" then
+            local ownLayout = F.GetGroupTypeLayout(Cell.vars.soloLayoutGroupType)
+            if not ownLayout then return end
+            if which then
+                -- partial update from the Layouts tab: only relevant when the edited layout is the one used here
+                if layout ~= ownLayout then return end
+            else
+                layout = ownLayout
+            end
+        end
     end
 
     -- update

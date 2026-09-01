@@ -1831,6 +1831,10 @@ local function GetDropdownItems(indices, groupType)
                     -- LoadLayoutDB(Cell.vars.currentLayout)
                     UpdateButtonStates()
                     -- UpdateEnabledLayoutText()
+                elseif Cell.vars.layoutGroupType then
+                    --! frame groups are laid out ahead of time for the group types the player is not in
+                    --! (see F.GetGroupTypeLayout), so let them pick up the new assignment
+                    F.UpdateLayout(Cell.vars.layoutGroupType, true)
                 end
             end,
         })
