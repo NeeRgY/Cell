@@ -264,6 +264,8 @@ end
 -------------------------------------------------
 -- update
 -------------------------------------------------
+local DEFAULT_HASCOLOR_COLOR = {1, 1, 1, 1}
+
 local function ResolveAuraEntry(indicatorTable, spell)
     local auras = indicatorTable["auras"]
     local entry = auras and auras[spell]
@@ -299,8 +301,9 @@ local function Update(indicator, indicatorTable, unit, spell, start, duration, d
             indicatorTable["top"][unit]["texture"] = icon
             indicatorTable["top"][unit]["count"] = count
             indicatorTable["top"][unit]["refreshing"] = refreshing
-            if color then
-                indicatorTable["top"][unit]["color"] = color
+            -- always (re)assign when hasColor, otherwise a new top aura without its own color keeps the previous one's
+            if indicatorTable["hasColor"] then
+                indicatorTable["top"][unit]["color"] = color or DEFAULT_HASCOLOR_COLOR
             end
         end
     end

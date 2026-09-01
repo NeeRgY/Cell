@@ -14,4 +14,5 @@
     <Script file="Request_TextOptions.lua"/>
     <Script file="MinimapButton.lua"/>
     <Script file="BlizzardOptions.lua"/>
+    <Script file="ClassicHealSpells.lua"/>
 </Ui>

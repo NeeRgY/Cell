@@ -30,7 +30,10 @@ local RETARGET_DELAY = 0.05
 
 local maxIcons = 1
 local showAllSpells = false
-local displayMode = "Icons" -- "None", "Icons"
+--! Classic only: single on/off glow toggle, auto-scaled Pixel glow instead of Retail's type/color picker
+local classicGlowEnabled = false
+--! Retail: "None"/"Icons" only, glow display was disabled for stability. Classic also has "Border"/"Both".
+local displayMode = "Icons"
 local enabled = false
 local SWIPE_COLOR = { 0.95, 0.95, 0.32, 1 }
 local targetedSpellsByName = {}
@@ -180,36 +183,12 @@ local function GetSwipeColor()
     return SWIPE_COLOR
 end
 
+--! tsGlowFrame is always created up front now (I.CreateTargetedSpells), so this just shows it.
 local function EnsureTsGlowFrame(frame)
     local glowFrame = frame.tsGlowFrame
-    if not glowFrame then
-        local button = frame:GetParent()
-        while button and not F.BD(button).widgets do
-            button = button:GetParent()
-        end
-        if button and F.BD(button).widgets then
-            if not F.BD(button).widgets.tsGlowFrame then
-                glowFrame = CreateFrame("Frame", button:GetName().."TSGlowFrame", button)
-                F.BD(button).widgets.tsGlowFrame = glowFrame
-                glowFrame:SetFrameLevel(button:GetFrameLevel() + 200)
-                glowFrame:SetAllPoints(button)
-            end
-            frame.tsGlowFrame = F.BD(button).widgets.tsGlowFrame
-            glowFrame = frame.tsGlowFrame
-        end
-    end
     if glowFrame then
         glowFrame:Show()
         glowFrame:SetAlpha(1)
-        local parent = glowFrame:GetParent()
-        if parent then
-            local w, h = parent:GetWidth(), parent:GetHeight()
-            if w > 0 and h > 0 and (glowFrame:GetWidth() == 0 or glowFrame:GetHeight() == 0) then
-                glowFrame:SetSize(w, h)
-                glowFrame:ClearAllPoints()
-                glowFrame:SetAllPoints(parent)
-            end
-        end
     end
     return glowFrame
 end
@@ -234,14 +213,26 @@ local function ShowCasts(b, showGlow, sortedCasts, num)
         return
     end
 
-    num = min(maxIcons, num)
-    for i = 1, num do
-        local cast = sortedCasts[i]
-        ts[i].cooldown:SetReverse(not cast.isChanneling)
-        ts[i]:SetCooldown(cast.startTime, cast.endTime - cast.startTime, cast.icon, cast.count)
+    --! Classic only: "Border" shows glow with no icons at all.
+    if not Cell.isRetail and displayMode == "Border" then
+        ts:UpdateSize(0)
+    else
+        num = min(maxIcons, num)
+        for i = 1, num do
+            local cast = sortedCasts[i]
+            ts[i].cooldown:SetReverse(not cast.isChanneling)
+            ts[i]:SetCooldown(cast.startTime, cast.endTime - cast.startTime, cast.icon, cast.count)
+        end
+        ts:UpdateSize(num)
     end
-    ts:UpdateSize(num)
-    ts:HideGlow()
+
+    --! Classic only: glow when enabled, in "Border"/"Both" mode, with at least one real cast.
+    if not Cell.isRetail and classicGlowEnabled and displayMode ~= "Icons" and sortedCasts[1] then
+        EnsureTsGlowFrame(ts)
+        ts:ShowGlow()
+    else
+        ts:HideGlow()
+    end
 end
 
 local function GetCastsOnUnit(targetUnit)
@@ -628,17 +619,31 @@ local function IgnoreGlowParentAlpha(glowFrame)
     end
 end
 
+--! LibCustomGlow-1.0 doesn't nil its tracking field after Release, so a later Stop can try to release
+--! an already-released object and get stuck - same bug fixed for Raid Debuffs.
 local function HideGlow(frame)
     local glowFrame = frame.tsGlowFrame
     if not glowFrame then return end
-    LCG.ButtonGlow_Stop(glowFrame)
-    LCG.PixelGlow_Stop(glowFrame)
-    LCG.AutoCastGlow_Stop(glowFrame)
-    LCG.ProcGlow_Stop(glowFrame)
+    pcall(LCG.ButtonGlow_Stop, glowFrame)
+    pcall(LCG.PixelGlow_Stop, glowFrame)
+    pcall(LCG.AutoCastGlow_Stop, glowFrame)
+    pcall(LCG.ProcGlow_Stop, glowFrame)
+    glowFrame._ButtonGlow = nil
+    glowFrame._PixelGlow = nil
+    glowFrame._AutoCastGlow = nil
+    glowFrame._ProcGlow = nil
 end
 
-local function ShowGlow(frame, glowType, color, arg1, arg2, arg3, arg4)
+--! Retail keeps this a no-op stub; Classic gets a single fixed, auto-scaled Pixel glow.
+local function ShowGlow(frame)
+    if Cell.isRetail then
+        HideGlow(frame)
+        return
+    end
+    local glowFrame = frame.tsGlowFrame
+    if not glowFrame then return end
     HideGlow(frame)
+    LCG.PixelGlow_Start(glowFrame, nil, nil, nil, nil, nil, 2, 2)
 end
 
 local function ShowPreview(frame)
@@ -653,12 +658,25 @@ local function ShowPreview(frame)
         return
     end
 
-    local num = min(maxIcons or 1, #frame)
-    for i = 1, num do
-        frame[i]:Show()
+    if not Cell.isRetail and displayMode == "Border" then
+        for i = 1, #frame do
+            frame[i]:Hide()
+        end
+        frame:UpdateSize(0)
+    else
+        local num = min(maxIcons or 1, #frame)
+        for i = 1, num do
+            frame[i]:Show()
+        end
+        frame:UpdateSize(num)
     end
-    frame:UpdateSize(num)
-    frame:HideGlow()
+
+    if not Cell.isRetail and classicGlowEnabled and displayMode ~= "Icons" then
+        EnsureTsGlowFrame(frame)
+        frame:ShowGlow()
+    else
+        frame:HideGlow()
+    end
 end
 
 local function HidePreview(frame)
@@ -674,6 +692,14 @@ function I.CreateTargetedSpells(parent)
     F.BD(parent).indicators.targetedSpells = targetedSpells
     targetedSpells:Hide()
 
+    --! the settings preview button is built differently and never gets a tsGlowFrame otherwise
+    if not F.BD(parent).widgets.tsGlowFrame then
+        local glowFrame = CreateFrame("Frame", parent:GetName().."TSGlowFrame", parent)
+        F.BD(parent).widgets.tsGlowFrame = glowFrame
+        glowFrame:SetFrameLevel(parent:GetFrameLevel() + 200)
+        glowFrame:SetAllPoints(parent)
+        glowFrame:Hide()
+    end
     targetedSpells.tsGlowFrame = F.BD(parent).widgets.tsGlowFrame
     targetedSpells._SetSize = targetedSpells.SetSize
     targetedSpells.SetSize = I.Cooldowns_SetSize
@@ -777,6 +803,17 @@ function I.ShowAllTargetedSpells(showAll)
     showAllSpells = showAll
 end
 
+--! Classic only.
+function I.SetTargetedSpellsGlowEnabled(glowEnabled)
+    classicGlowEnabled = not not glowEnabled
+    RefreshAllShown()
+    --! RefreshAllShown doesn't touch the settings preview button, nudge it directly too
+    if CellIndicatorsPreviewButton then
+        local ts = F.BD(CellIndicatorsPreviewButton).indicators.targetedSpells
+        if ts then ts:ShowGlowPreview() end
+    end
+end
+
 function I.RefreshTargetedSpellsList()
     RebuildNameIndex()
 end
@@ -787,10 +824,11 @@ function I.UpdateTargetedSpellsNum(num)
 end
 
 function I.UpdateTargetedSpellsDisplayMode(mode)
-    if mode == "Border" or mode == "Both" then
+    if Cell.isRetail and (mode == "Border" or mode == "Both") then
+        --! Retail: border/glow display stays disabled (see comment on `displayMode` above).
         mode = "Icons"
     end
-    if mode == "None" or mode == "Icons" then
+    if mode == "None" or mode == "Icons" or (not Cell.isRetail and (mode == "Border" or mode == "Both")) then
         displayMode = mode
     else
         displayMode = "Icons"

@@ -7,6 +7,10 @@ local I = Cell.iFuncs
 ---@type PixelPerfectFuncs
 local P = Cell.pixelPerfectFuncs
 local LCG = LibStub("LibCustomGlow-1.0")
+--! pre-MoP Classic has no specialization concept - neither exists there, so calling either crashes.
+--! nil is a valid, handled input everywhere this is used (falls back to "no spec filtering").
+local GetSpecialization = GetSpecialization or (C_SpecializationInfo and C_SpecializationInfo.GetSpecialization)
+local GetSpecializationInfo = GetSpecializationInfo or (C_SpecializationInfo and C_SpecializationInfo.GetSpecializationInfo)
 
 -----------------------------------------
 -- Color
@@ -7236,7 +7240,7 @@ local function CreateSetting_TargetedSpellsDisplayMode(parent)
 
         widget.dropdown = Cell.CreateDropdown(widget, 245)
         widget.dropdown:SetPoint("TOPLEFT", 5, -20)
-        widget.dropdown:SetItems({
+        local ddItems = {
             {
                 ["text"] = L["None"],
                 ["value"] = "None",
@@ -7251,7 +7255,26 @@ local function CreateSetting_TargetedSpellsDisplayMode(parent)
                     widget.func("Icons")
                 end,
             },
-        })
+        }
+        --! Classic only: border/glow display was disabled on Retail (Blizzard secret-value
+        --! restrictions made it unstable there) - Classic has none of that, keep it available.
+        if not Cell.isRetail then
+            tinsert(ddItems, {
+                ["text"] = L["Border"],
+                ["value"] = "Border",
+                ["onClick"] = function()
+                    widget.func("Border")
+                end,
+            })
+            tinsert(ddItems, {
+                ["text"] = L["Both"],
+                ["value"] = "Both",
+                ["onClick"] = function()
+                    widget.func("Both")
+                end,
+            })
+        end
+        widget.dropdown:SetItems(ddItems)
 
         widget.label = widget:CreateFontString(nil, "OVERLAY", font_name)
         widget.label:SetText(L["Display Mode"])
@@ -7262,7 +7285,12 @@ local function CreateSetting_TargetedSpellsDisplayMode(parent)
         end
 
         function widget:SetDBValue(value)
-            widget.dropdown:SetSelectedValue((value == "None") and "None" or "Icons")
+            if Cell.isRetail then
+                widget.dropdown:SetSelectedValue((value == "None") and "None" or "Icons")
+            else
+                local valid = value == "None" or value == "Icons" or value == "Border" or value == "Both"
+                widget.dropdown:SetSelectedValue(valid and value or "Icons")
+            end
         end
     else
         widget = settingWidgets["targetedSpellsDisplayMode"]
@@ -7521,9 +7549,11 @@ local function RefreshSpellPicker()
     local s = state.specIndex
     if c == "AUTO" then
         local _, t = UnitClass("player"); c = t
-        s = GetSpecialization()
+        s = GetSpecialization and GetSpecialization()
     end
-    local spells = F.GetAuraBlacklistBuffSpells(c, s) or {}
+    local spells = (F.GetAuraBlacklistBuffSpells and F.GetAuraBlacklistBuffSpells(c, s))
+        or (F.GetClassicHealSpells and F.GetClassicHealSpells(c))
+        or {}
 
     for _, r in ipairs(SpellPickerFrame.rows or {}) do r:Hide(); r:ClearAllPoints() end
     SpellPickerFrame.rows = {}
@@ -7597,7 +7627,7 @@ local function RefreshSpellPicker()
     if #SpellPickerFrame.rows == 0 then
         local _, classToken = UnitClass("player")
             local noSpellsMsg = L["No spells available for your spec."]
-            if classToken and c == classToken then
+            if classToken and c == classToken and GetSpecialization and GetSpecializationInfo then
                 local _, specName = GetSpecializationInfo(GetSpecialization())
                 if specName then
                     noSpellsMsg = L["No spells available for %s."]:format(specName)
@@ -7679,7 +7709,7 @@ local function CreateSpellPicker()
 
             local autoLabel = "|cffbababaAuto|r"
             local _, classToken = UnitClass("player")
-            if classToken and specLabels[classToken] then
+            if classToken and specLabels[classToken] and GetSpecialization and GetSpecializationInfo then
                 local mySpec = GetSpecialization()
                 if mySpec then
                     local _, specName = GetSpecializationInfo(mySpec)
@@ -7690,7 +7720,10 @@ local function CreateSpellPicker()
 
             tinsert(items, { label = "---", value = nil, isSep = true })
 
-            local classOrder = F.AuraBlacklistClassOrder or F.AuraBlacklistClassNames and {"PRIEST","DRUID","PALADIN","SHAMAN","MONK","EVOKER","MAGE","WARRIOR","ROGUE","HUNTER"} or {}
+            local classOrder = F.AuraBlacklistClassOrder
+                or (F.AuraBlacklistClassNames and {"PRIEST","DRUID","PALADIN","SHAMAN","MONK","EVOKER","MAGE","WARRIOR","ROGUE","HUNTER"})
+                or (F.GetClassicHealClassOrder and F.GetClassicHealClassOrder())
+                or {}
             for _, ct in ipairs(classOrder) do
                 local r, g, b = F.GetClassColor(ct)
                 local colorStr = ("%02x%02x%02x"):format(r*255, g*255, b*255)
@@ -7921,14 +7954,16 @@ local function CreateSetting_AuraBlacklist(parent)
         local function DBFilter()  return state.filter == "buffs" and "HELPFUL" or "HARMFUL"  end
 
         local function Spells()
-            if state.filter == "debuffs" then return F.GetAuraBlacklistDebuffSpells() end
+            if state.filter == "debuffs" then
+                return (F.GetAuraBlacklistDebuffSpells and F.GetAuraBlacklistDebuffSpells()) or {}
+            end
             local c = state.class
             local s = state.spec
             if c == "AUTO" then
                 local _, t = UnitClass("player"); c = t
                 s = nil
             end
-            return F.GetAuraBlacklistBuffSpells(c, s) or {}
+            return (F.GetAuraBlacklistBuffSpells and F.GetAuraBlacklistBuffSpells(c, s)) or {}
         end
 
         local DD_Y = -5
@@ -8070,7 +8105,7 @@ local function CreateSetting_AuraBlacklist(parent)
                     onClick = function()
                         state.class = c; state.spec = nil
                         if widget.specDD then
-                            local sNames = F.AuraBlacklistSpecNames[c] or {}
+                            local sNames = (F.AuraBlacklistSpecNames and F.AuraBlacklistSpecNames[c]) or {}
                             local sItems = {
                                 { text = L["All specs"],
                                   value = nil,

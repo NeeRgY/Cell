@@ -267,9 +267,9 @@ local function Shared_CreateCooldown_Clock(frame)
     P.Point(cooldown, "BOTTOMRIGHT", frame, -CELL_BORDER_SIZE, CELL_BORDER_SIZE)
     cooldown:SetReverse(true)
     cooldown:SetDrawEdge(false)
-    if Cell.isRetail then
-        cooldown:SetSwipeTexture(Cell.vars.whiteTexture)
-    end
+    --! without a swipe texture, SetSwipeColor below has nothing to tint - the circular cooldown
+    --! style was invisible on Classic (used to be Cell.isRetail-only)
+    cooldown:SetSwipeTexture(Cell.vars.whiteTexture)
     cooldown:SetSwipeColor(0, 0, 0, 0.65)
     -- cooldown:SetEdgeTexture([[Interface\Cooldown\UI-HUD-ActionBar-SecondaryCooldown]])
 
@@ -364,7 +364,53 @@ local StopGlow = {
     ["proc"] = ProcGlow_Stop,
 }
 
+--! Retail keeps the no-op stub below (glow forced to "None"). Classic gets the real implementation:
+--! reads glowOptions and actually starts the glow, for every glowOptions-driven indicator.
+local function Shared_SetupGlow_Classic(frame, glowOptions)
+    frame.glowType = glowOptions[1]
+    frame.glowOptions = {}
+
+    ButtonGlow_Stop(frame)
+    PixelGlow_Stop(frame)
+    AutoCastGlow_Stop(frame)
+    ProcGlow_Stop(frame)
+
+    frame.StartGlow = StartGlow[strlower(frame.glowType or "none")]
+    frame.StopGlow = StopGlow[strlower(frame.glowType or "none")]
+
+    if frame.glowType == "Normal" then
+        frame.glowOptions.color = glowOptions[2]
+    elseif frame.glowType == "Pixel" then
+        frame.glowOptions.color = glowOptions[2]
+        frame.glowOptions.N = glowOptions[3]
+        frame.glowOptions.frequency = glowOptions[4]
+        frame.glowOptions.length = glowOptions[5]
+        frame.glowOptions.thickness = glowOptions[6]
+    elseif frame.glowType == "Shine" then
+        frame.glowOptions.color = glowOptions[2]
+        frame.glowOptions.N = glowOptions[3]
+        frame.glowOptions.frequency = glowOptions[4]
+        frame.glowOptions.scale = glowOptions[5]
+    elseif frame.glowType == "Proc" then
+        frame.glowOptions = {color = glowOptions[2], duration = glowOptions[3], startAnim = false}
+    end
+
+    if frame.glowType and frame.glowType ~= "None" then
+        frame:StartGlow()
+        if not frame._sizeChangedHooked then
+            frame._sizeChangedHooked = true
+            frame:HookScript("OnSizeChanged", function()
+                frame:StartGlow()
+            end)
+        end
+    end
+end
+
 local function Shared_SetupGlow(frame, glowOptions)
+    if not Cell.isRetail then
+        Shared_SetupGlow_Classic(frame, glowOptions)
+        return
+    end
     ButtonGlow_Stop(frame)
     PixelGlow_Stop(frame)
     AutoCastGlow_Stop(frame)
@@ -499,9 +545,9 @@ local function BorderIcon_CreateClockCooldown(frame)
     cooldown:SetFrameLevel(frame.iconFrame:GetFrameLevel() + 1)
     cooldown:SetReverse(true)
     cooldown:SetDrawEdge(false)
-    if Cell.isRetail then
-        cooldown:SetSwipeTexture(Cell.vars.whiteTexture)
-    end
+    --! without a swipe texture, SetSwipeColor below has nothing to tint - the circular cooldown
+    --! style was invisible on Classic (used to be Cell.isRetail-only)
+    cooldown:SetSwipeTexture(Cell.vars.whiteTexture)
     cooldown:SetSwipeColor(0, 0, 0, 0.65)
     cooldown:SetHideCountdownNumbers(true)
     if Cell.isMidnight and cooldown.SetCountdownAbbrevThreshold then

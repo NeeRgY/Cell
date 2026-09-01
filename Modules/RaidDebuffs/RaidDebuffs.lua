@@ -41,10 +41,10 @@ local encounterJournalList = {
     --     },
     -- },
 }
---[==[@debug@
+--@debug@
 Cell_DevExpansionData = encounterJournalList
 Cell_DevExpansionNames = {}
---@end-debug@]==]
+--@end-debug@
 
 -- used to GetInstanceInfo/GetRealZoneText --> instanceId
 local instanceNameMapping = {
@@ -116,9 +116,9 @@ local function LoadList()
     for tier = 1, num do
         local name = EJ_GetTierInfo(tier)
         encounterJournalList[name] = {}
-        --[==[@debug@
+        --@debug@
         tinsert(Cell_DevExpansionNames, 1, name)
-        --@end-debug@]==]
+        --@end-debug@
 
         if tier ~= CURRENT_SEASON_INDEX then -- don't load raid for "Current Season"
             LoadInstanceList(tier, "raid", encounterJournalList[name])

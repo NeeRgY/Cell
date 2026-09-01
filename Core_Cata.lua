@@ -169,19 +169,8 @@ function F.UpdateLayout(layoutGroupType)
     end
 end
 
---! solo/party/raid frame groups keep their "state-visibility" driver registered at all times (see
---! SoloFrame_UpdateLayout/PartyFrame_UpdateLayout/RaidFrame_UpdateLayout), so that switching between them is
---! handled natively by the secure driver conditional instead of by a fresh RegisterAttributeDriver call.
---! F.UpdateLayout above never runs in combat (it defers itself to PLAYER_REGEN_ENABLED), so a group change
---! made in combat - e.g. accepting a party invite - would otherwise leave every frame group's driver in the
---! state it had for the previous group type, and nothing visible until combat ends.
---!
---! That means each frame group has to know in advance which layoutAutoSwitch entry decides whether it must
---! stay hidden, including for a group type the player is not currently in. SetLayoutGroupTypes records that
---! mapping for the current zone - inside a pvp instance every frame group uses the battleground/arena entry,
---! everywhere else solo/party get their own and raid gets the outdoor/raidType variant - and
---! F.IsGroupTypeHidden looks it up in the last resolved layoutAutoSwitch table (refreshed by F.UpdateLayout,
---! always out of combat). Classic-only (Cell.isRetail branches around this in the Group frame files).
+--! Classic-only: lets each frame group's visibility driver stay registered natively (see the Group
+--! frame files) instead of needing a fresh RegisterAttributeDriver call, which can't happen in combat.
 local function SetLayoutGroupTypes(solo, party, raid)
     Cell.vars.soloLayoutGroupType = solo
     Cell.vars.partyLayoutGroupType = party
@@ -190,6 +179,14 @@ end
 
 function F.IsGroupTypeHidden(layoutGroupType)
     return layoutGroupType and Cell.vars.layoutAutoSwitch and Cell.vars.layoutAutoSwitch[layoutGroupType] == "hide"
+end
+
+--! lets a frame group look up its own layout even while inactive, so it can lay out ahead of time
+--! instead of staying blank the first time it's shown natively during combat.
+function F.GetGroupTypeLayout(layoutGroupType)
+    local layout = layoutGroupType and Cell.vars.layoutAutoSwitch and Cell.vars.layoutAutoSwitch[layoutGroupType]
+    if not layout or layout == "hide" then return nil end
+    return layout
 end
 
 local bgMaxPlayers = {

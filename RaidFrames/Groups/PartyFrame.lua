@@ -102,13 +102,9 @@ local function PartyFrame_UpdateLayout(layout, which)
             RegisterAttributeDriver(partyFrame, "state-visibility", "[@raid1,exists] hide;[@party1,exists] show;[group:party] show;hide")
         end
     else
-        -- Classic-only: the driver reacts natively to the real group state, so it stays registered
-        -- whatever the currently active group type is - combat can never leave it stuck unregistered
-        -- (see F.IsGroupTypeHidden). Keeps Retail on the exact old register/unregister behavior above.
+        -- Classic-only: the driver stays registered and reacts natively, so it's never stuck
+        -- unregistered mid-combat (see F.IsGroupTypeHidden).
         if F.IsGroupTypeHidden(Cell.vars.partyLayoutGroupType) then
-            -- Configured to hide: register an unconditional "hide" instead of unregistering, so that a
-            -- group change happening in combat still resolves to hidden rather than to whatever the
-            -- driver last said.
             RegisterAttributeDriver(partyFrame, "state-visibility", "hide")
             partyFrame:Hide()
             return
@@ -116,7 +112,12 @@ local function PartyFrame_UpdateLayout(layout, which)
             RegisterAttributeDriver(partyFrame, "state-visibility", "[@raid1,exists] hide;[@party1,exists] show;[group:party] show;hide")
         end
 
-        if Cell.vars.groupType ~= "party" then return end
+        if Cell.vars.groupType ~= "party" then
+            -- lay out ahead of time even while inactive, so it's not blank the first time combat shows it
+            local ownLayout = F.GetGroupTypeLayout(Cell.vars.partyLayoutGroupType)
+            if not ownLayout then return end
+            layout = ownLayout
+        end
     end
 
     -- update

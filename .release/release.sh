@@ -193,7 +193,7 @@ toc_to_type() {
 	case $toc_version in
 		11???) game_type="classic" ;;
 		20???) game_type="bcc" ;;
-		30???) game_type="wrath" ;;
+		30???|38???) game_type="wrath" ;; # 38xxx: Wrath Classic Anniversary realms
 		40???) game_type="cata" ;;
 		50???) game_type="mists" ;;
 		*) game_type="retail"

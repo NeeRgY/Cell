@@ -106,6 +106,7 @@ select(2, ...).L = setmetatable({
     ["fadeOut"] = "Fade out over time",
     ["shieldByMe"] = "Only show PW:S cast by me",
     ["onlyShowOvershields"] = "Only show overshields",
+    ["targetedSpellsGlowEnabled"] = "Enable Glow",
     ["Icons only"] = "Icons only",
     ["Glow only"] = "Glow only",
     ["enableBlacklistShortcut"] = "Blacklist: Alt+Ctrl+RightClick",
@@ -154,6 +155,19 @@ select(2, ...).L = setmetatable({
     ["BACKUP_TIPS2"] = "Note for Classic players: Backups do not include Click-Castings and Layout Auto Switch of other characters",
     ["CHANGELOGS"] = [[
 
+
+        <h1>r277.9.8.4 - NeRgY</h1>
+        <h2>Classic / TBC</h2>
+        <p>* Fixed party/raid frames staying blank the first time you join that group type since your last reload, if the group change happened during combat.</p>
+        <p>* Fixed the dispel-type border settings resetting to default on the first group join after a reload or layout switch.</p>
+        <p>* Increased the resurrection icon's retry window, so it's less likely to miss when two people resurrect the same target close together.</p>
+        <p>* Fixed Raid Debuffs' glow sometimes getting permanently stuck on until a /reload.</p>
+        <p>* Fixed several Lua errors: opening the Spell Picker, confirming a custom indicator's spell list, and clicking "Aura Blacklist" in the indicator list (that's Retail-only and shouldn't have been visible here).</p>
+        <p>* Fixed indicator settings (position, size, colors, and more) silently failing to apply to real frames whenever a pet frame didn't carry that indicator.</p>
+        <p>* Fixed the "Circular" animation style being completely invisible.</p>
+        <p>* Restored Glow on Classic across the board.</p>
+        <p>* Added Vanilla/TBC-appropriate spell suggestions to the Spell Picker on custom indicators like "Healers", with a class dropdown to browse other classes' spells too.</p>
+        <br/>
 
         <h1>r277.9.8.3 - NeRgY</h1>
         <h2>Retail</h2>

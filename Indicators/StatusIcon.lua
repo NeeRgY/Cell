@@ -26,13 +26,12 @@ local soulstones = {}
 local SOULSTONE = F.GetSpellInfo(20707)
 local RESURRECTING = F.GetSpellInfo(160029)
 
--- F.HandleUnitButton("guid", ...) only works once Cell.vars.guids[destGUID] is
--- populated, which lags the actual GUID change by up to ~0.5s -- retry instead
--- of silently dropping a resurrection cast that lands in that gap.
+-- F.HandleUnitButton("guid", ...) only works once Cell.vars.guids[destGUID] is populated, which lags
+-- the actual GUID change briefly -- retry instead of silently dropping a resurrection cast.
 local function HandleUnitButton_WithRetry(destGUID, func, arg1, arg2, attempt)
     if F.HandleUnitButton("guid", destGUID, func, arg1, arg2) then return end
     attempt = (attempt or 0) + 1
-    if attempt >= 5 then return end
+    if attempt >= 15 then return end
     C_Timer.After(0.1, function()
         HandleUnitButton_WithRetry(destGUID, func, arg1, arg2, attempt)
     end)

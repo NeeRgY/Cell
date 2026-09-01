@@ -603,7 +603,8 @@ end
 local function GetBorderColor(cfg)
     local auras = cfg and cfg.auras
     if type(auras) == "table" then
-        for _, v in ipairs(auras) do
+        -- pairs, not ipairs: the "track any spell" entry lives at key 0
+        for _, v in pairs(auras) do
             if type(v) == "table" and type(v[2]) == "table" then
                 local c = v[2]
                 return c[1] or 1, c[2] or 0, c[3] or 0, c[4] or 1
@@ -618,13 +619,11 @@ local function MakeInitBorderButton(cfg, unitButton)
         pcall(button.SetSize, button, 0.001, 0.001)
         F.SetupEngineAuraButtonMouse(button, true)
 
-        local dummy = button:CreateTexture(nil, "ARTWORK")
-        dummy:SetAllPoints(button)
-        dummy:SetColorTexture(0, 0, 0, 0)
-        pcall(button.SetIcon, button, dummy)
+        local icon = AttachHiddenIcon(button)
 
         local inset = CELL_BORDER_SIZE or 1
         local thickness = cfg.thickness or 2
+        local texMap, firstColor = BuildTextureColorMap(cfg.auras)
         local r, g, b, a = GetBorderColor(cfg)
 
         local tex = button:CreateTexture(nil, "ARTWORK", nil, 3)
@@ -633,6 +632,12 @@ local function MakeInitBorderButton(cfg, unitButton)
         tex:ClearAllPoints()
         tex:SetPoint("TOPLEFT", unitButton, "TOPLEFT", inset, -inset)
         tex:SetPoint("BOTTOMRIGHT", unitButton, "BOTTOMRIGHT", -inset, inset)
+
+        -- recolor to match whichever aura is actually showing, like bar/block do
+        HookIconColor(ResolveIconTexture(button, icon), texMap, firstColor or { r, g, b, a }, function(color)
+            if not color then return end
+            tex:SetVertexColor(UnpackColor(color, { r, g, b, a }))
+        end)
 
         local mask = button:CreateMaskTexture()
         mask:SetTexture(Cell.vars.emptyTexture, "CLAMPTOWHITE", "CLAMPTOWHITE")
@@ -653,6 +658,25 @@ local function MakeInitBorderButton(cfg, unitButton)
         mask2:SetPoint("TOPLEFT", tex2, "TOPLEFT", thickness + inset, -(thickness + inset))
         mask2:SetPoint("BOTTOMRIGHT", tex2, "BOTTOMRIGHT", -(thickness + inset), thickness + inset)
         tex2:AddMaskTexture(mask2)
+
+        -- "Fade out over time"
+        if cfg.fadeOut then
+            local cooldown = AttachInvisibleCooldown(button)
+            local elapsed = 0
+            tex:SetScript("OnUpdate", function(self, e)
+                elapsed = elapsed + e
+                if elapsed < 0.1 then return end
+                elapsed = 0
+                local startMs, durationMs = cooldown:GetCooldownTimes()
+                if not startMs or not durationMs or durationMs <= 0 then
+                    self:SetAlpha(1)
+                    return
+                end
+                local remain = F.GetRemain(startMs / 1000, durationMs / 1000)
+                if remain < 0 then remain = 0 end
+                self:SetAlpha(remain / (durationMs / 1000) * 0.9 + 0.1)
+            end)
+        end
 
         local host = F.BD(unitButton).widgets and F.BD(unitButton).widgets.highLevelFrame or unitButton
         local base = (host.GetFrameLevel and host:GetFrameLevel())
@@ -975,6 +999,7 @@ local function MakeParkKey(cfg)
         StampCfgValue(cfg.colors),
         cfg.texture,
         cfg.thickness,
+        cfg.fadeOut,
         cfg.barOrientation,
         StampCfgValue(cfg.duration),
         StampCfgValue(cfg.stack),

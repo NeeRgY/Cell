@@ -14,6 +14,49 @@ local function BD(b) return F.GetButtonData(b) end
 ---@type CellAnimations
 local A = Cell.animations
 
+--! LibCustomGlow-1.0 doesn't nil its tracking field after Release, so a later Stop can try to release
+--! an already-released object and get stuck. pcall + explicit nil-out avoids that.
+local RAID_DEBUFFS_GLOW_FIELD = {
+    ["Normal"] = "_ButtonGlow",
+    ["Pixel"] = "_PixelGlow",
+    ["Shine"] = "_AutoCastGlow",
+    ["Proc"] = "_ProcGlow",
+}
+
+local function ClearGlowFieldsExcept(target, exceptGlowType)
+    if not target then return end
+    for glowType, fieldName in pairs(RAID_DEBUFFS_GLOW_FIELD) do
+        if glowType ~= exceptGlowType then
+            target[fieldName] = nil
+        end
+    end
+end
+
+local function SafeRaidDebuffsGlowCall(indicator, method, ...)
+    if not indicator then return end
+    local fn = indicator[method]
+    if not fn then return end
+    pcall(fn, indicator, ...)
+
+    local target = indicator.parent
+    if method == "Hide" then
+        ClearGlowFieldsExcept(target, nil)
+    elseif method == "HideGlow" then
+        local glowType = ...
+        if glowType then
+            local fieldName = RAID_DEBUFFS_GLOW_FIELD[glowType]
+            if fieldName and target then target[fieldName] = nil end
+        else
+            ClearGlowFieldsExcept(target, nil)
+        end
+    elseif method == "ShowGlow" then
+        local glowType, _, noHiding = ...
+        if not noHiding then
+            ClearGlowFieldsExcept(target, glowType)
+        end
+    end
+end
+
 local HealComm
 
 CELL_FADE_OUT_HEALTH_PERCENT = nil
@@ -88,10 +131,12 @@ local function UpdateIndicatorParentVisibility(b, indicatorName, enabled)
         return
     end
 
+    local indicator = BD(b).indicators[indicatorName]
+    if not indicator then return end
     if enabled then
-        BD(b).indicators[indicatorName]:Show()
+        indicator:Show()
     else
-        BD(b).indicators[indicatorName]:Hide()
+        indicator:Hide()
     end
 end
 
@@ -126,6 +171,10 @@ local function ResetIndicators()
         elseif t["indicatorName"] == "targetedSpells" then
             I.UpdateTargetedSpellsNum(t["num"])
             I.ShowAllTargetedSpells(t["showAllSpells"])
+            I.SetTargetedSpellsGlowEnabled(t["targetedSpellsGlowEnabled"])
+            if I.UpdateTargetedSpellsDisplayMode then
+                I.UpdateTargetedSpellsDisplayMode(t["displayMode"] or "Both")
+            end
             I.EnableTargetedSpells(t["enabled"])
 
         -- update actions
@@ -214,12 +263,24 @@ local function HandleIndicators(b)
                 P.Size(indicator, t["size"][1], t["size"][2])
             end
         end
-        -- update thickness
+        -- update thickness (+ dispel border on/off for debuffs, "off" = 0 thickness)
         if t["thickness"] then
-            indicator:SetThickness(t["thickness"])
+            if t["indicatorName"] == "debuffs" then
+                if indicator.SetBorder then
+                    local on = t["showDispelBorder"] ~= false
+                    indicator:SetBorder(on and t["thickness"] or 0)
+                end
+            elseif t["indicatorName"] == "dispels" then
+                if indicator.SetFrameBorderThickness then
+                    indicator:SetFrameBorderThickness(t["thickness"])
+                    indicator:SetFrameBorderEnabled(t["showDispelFrameBorder"] == true)
+                end
+            else
+                indicator:SetThickness(t["thickness"])
+            end
         end
         -- update border
-        if t["border"] then
+        if t["border"] and indicator.SetBorder then
             indicator:SetBorder(t["border"])
         end
         -- update height
@@ -502,6 +563,7 @@ local activeLayouts = {
     raid = nil,
 }
 
+-- not every button carries every indicator (e.g. pet buttons), hence the nil guards below
 local function UpdateIndicators(layout, indicatorName, setting, value, value2)
     F.Debug("|cffff7777UpdateIndicators:|r ", layout, indicatorName, setting, value, value2)
 
@@ -577,6 +639,7 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
 
             if indicatorName == "combatIcon" then
                 F.IterateAllUnitButtons(function(b)
+                    if not BD(b).indicators[indicatorName] then return end
                     if not value then
                         BD(b).indicators[indicatorName]:Hide()
                     end
@@ -615,6 +678,7 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
                 end, true)
             elseif indicatorName == "nameText" then
                 F.IterateAllUnitButtons(function(b)
+                    if not BD(b).indicators[indicatorName] then return end
                     if value then
                         BD(b).indicators[indicatorName]:Show()
                     else
@@ -627,6 +691,7 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
                 end, true)
             elseif indicatorName == "healthText" then
                 F.IterateAllUnitButtons(function(b)
+                    if not BD(b).indicators[indicatorName] then return end
                     if value then
                         BD(b).indicators[indicatorName]:Show()
                         B.UpdateHealthText(b)
@@ -640,7 +705,7 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
                     CheckPowerEventRegistration(b)
                     if BD(b)._shouldShowPowerText then
                         B.UpdatePowerText(b)
-                    else
+                    elseif BD(b).indicators[indicatorName] then
                         BD(b).indicators[indicatorName]:Hide()
                     end
                 end, true)
@@ -660,7 +725,7 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
                 -- refresh
                 F.IterateAllUnitButtons(function(b)
                     UpdateIndicatorParentVisibility(b, indicatorName, value)
-                    if not value then
+                    if not value and BD(b).indicators[indicatorName] then
                         BD(b).indicators[indicatorName]:Hide() -- hide indicators which is shown right now
                     end
                     UnitButton_UpdateAuras(b)
@@ -669,6 +734,7 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
         elseif setting == "position" then
             F.IterateAllUnitButtons(function(b)
                 local indicator = BD(b).indicators[indicatorName]
+                if not indicator then return end
                 if indicatorName == "statusText" then
                     indicator:SetPosition(value[1], value[2], value[3])
                 else
@@ -684,16 +750,19 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
         elseif setting == "anchor" then
             F.IterateAllUnitButtons(function(b)
                 local indicator = BD(b).indicators[indicatorName]
+                if not indicator then return end
                 indicator:SetAnchor(value)
             end, true)
         elseif setting == "frameLevel" then
             F.IterateAllUnitButtons(function(b)
                 local indicator = BD(b).indicators[indicatorName]
+                if not indicator then return end
                 indicator:SetFrameLevel(indicator:GetParent():GetFrameLevel()+value)
             end, true)
         elseif setting == "size" then
             F.IterateAllUnitButtons(function(b)
                 local indicator = BD(b).indicators[indicatorName]
+                if not indicator then return end
                 if indicatorName == "debuffs" then
                     indicator:SetSize(value[1], value[2])
                     -- update debuffs' normal/big icon sizes
@@ -705,19 +774,18 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
         elseif setting == "size-border" then
             F.IterateAllUnitButtons(function(b)
                 local indicator = BD(b).indicators[indicatorName]
+                if not indicator then return end
                 P.Size(indicator, value[1], value[2])
                 indicator:SetBorder(value[3])
             end, true)
         elseif setting == "thickness" then
             F.IterateAllUnitButtons(function(b)
                 local ind = BD(b).indicators[indicatorName]
-                --! not every button carries every indicator (a pet button has no debuffs, for one)
                 if not ind then return end
                 if indicatorName == "debuffs" then
                     if ind.configs then ind.configs.thickness = value end
                     if ind.SetBorder then
-                        --! keep the border off while the dispel-type border is disabled, so dragging
-                        --! the slider in the combined widget cannot switch it back on
+                        --! keep the border off while the dispel-type border toggle is disabled
                         local on = not (ind.configs and ind.configs.showDispelBorder == false)
                         ind:SetBorder(on and value or 0)
                     end
@@ -733,43 +801,53 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
         elseif setting == "height" then
             F.IterateAllUnitButtons(function(b)
                 local indicator = BD(b).indicators[indicatorName]
+                if not indicator then return end
                 P.Height(indicator, value)
             end, true)
         elseif setting == "textWidth" then
             F.IterateAllUnitButtons(function(b)
                 local indicator = BD(b).indicators[indicatorName]
+                if not indicator then return end
                 indicator:UpdateTextWidth(value)
             end, true)
         elseif setting == "alpha" then
             F.IterateAllUnitButtons(function(b)
                 local indicator = BD(b).indicators[indicatorName]
+                if not indicator then return end
                 indicator:SetAlpha(value)
             end, true)
         elseif setting == "spacing" then
             F.IterateAllUnitButtons(function(b)
                 local indicator = BD(b).indicators[indicatorName]
+                if not indicator then return end
                 indicator:SetSpacing(value)
             end, true)
         elseif setting == "orientation" then
             F.IterateAllUnitButtons(function(b)
                 local indicator = BD(b).indicators[indicatorName]
+                if not indicator then return end
                 indicator:SetOrientation(value)
             end, true)
         elseif setting == "font" then
             F.IterateAllUnitButtons(function(b)
                 local indicator = BD(b).indicators[indicatorName]
+                if not indicator then return end
                 indicator:SetFont(unpack(value))
             end, true)
         elseif setting == "format" then
             if indicatorName == "healthText" then
                 F.IterateAllUnitButtons(function(b)
                     local indicator = BD(b).indicators[indicatorName]
+                    if not indicator then return end
+                if not indicator then return end
                     indicator:SetFormat(value)
                     B.UpdateHealthText(b)
                 end, true)
             elseif indicatorName == "powerText" then
                 F.IterateAllUnitButtons(function(b)
                     local indicator = BD(b).indicators[indicatorName]
+                    if not indicator then return end
+                if not indicator then return end
                     indicator:SetFormat(value)
                     B.UpdatePowerText(b)
                 end, true)
@@ -788,18 +866,22 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
             else
                 F.IterateAllUnitButtons(function(b)
                     local indicator = BD(b).indicators[indicatorName]
+                    if not indicator then return end
+                if not indicator then return end
                     indicator:SetColor(unpack(value))
                 end, true)
             end
         elseif setting == "colors" then
             F.IterateAllUnitButtons(function(b)
                 local indicator = BD(b).indicators[indicatorName]
+                if not indicator then return end
                 indicator:SetColors(value) -- update color on next SetCooldown
                 UnitButton_UpdateAuras(b) -- call SetCooldown now
             end, true)
         elseif setting == "vehicleNamePosition" then
             F.IterateAllUnitButtons(function(b)
                 local indicator = BD(b).indicators[indicatorName]
+                if not indicator then return end
                 indicator:UpdateVehicleNamePosition(value)
             end, true)
         elseif setting == "statusColors" then
@@ -819,17 +901,20 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
         elseif setting == "numPerLine" then
             F.IterateAllUnitButtons(function(b)
                 local indicator = BD(b).indicators[indicatorName]
+                if not indicator then return end
                 indicator:SetNumPerLine(value)
             end, true)
         elseif setting == "roleTexture" then
             F.IterateAllUnitButtons(function(b)
                 local indicator = BD(b).indicators[indicatorName]
+                if not indicator then return end
                 indicator:SetRoleTexture(value)
                 UnitButton_UpdateRole(b)
             end, true)
         elseif setting == "texture" then
             F.IterateAllUnitButtons(function(b)
                 local indicator = BD(b).indicators[indicatorName]
+                if not indicator then return end
                 indicator:SetTexture(value)
             end, true)
         elseif setting == "duration" or setting == "dispelFilters" then
@@ -838,11 +923,13 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
             end, true)
         elseif setting == "stack" then
             F.IterateAllUnitButtons(function(b)
+                if not BD(b).indicators[indicatorName] then return end
                 BD(b).indicators[indicatorName]:SetStack(value)
                 UnitButton_UpdateAuras(b)
             end, true)
         elseif setting == "highlightType" then
             F.IterateAllUnitButtons(function(b)
+                if not BD(b).indicators[indicatorName] then return end
                 BD(b).indicators[indicatorName]:UpdateHighlight(value)
                 UnitButton_UpdateAuras(b)
             end, true)
@@ -853,6 +940,7 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
             end, true)
         elseif setting == "showDuration" then
             F.IterateAllUnitButtons(function(b)
+                if not BD(b).indicators[indicatorName] then return end
                 BD(b).indicators[indicatorName]:ShowDuration(value)
                 UnitButton_UpdateAuras(b)
             end, true)
@@ -862,7 +950,7 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
                 CheckPowerEventRegistration(b)
                 if BD(b)._shouldShowPowerText then
                     B.UpdatePowerText(b)
-                else
+                elseif BD(b).indicators[indicatorName] then
                     BD(b).indicators[indicatorName]:Hide()
                 end
             end, true)
@@ -870,16 +958,19 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
             I.UpdateTargetCounterFilters()
         elseif setting == "maxValue" then
             F.IterateAllUnitButtons(function(b)
+                if not BD(b).indicators[indicatorName] then return end
                 BD(b).indicators[indicatorName]:SetMaxValue(value)
                 UnitButton_UpdateAuras(b)
             end, true)
         elseif setting == "glowOptions" then
             F.IterateAllUnitButtons(function(b)
+                if not BD(b).indicators[indicatorName] then return end
                 BD(b).indicators[indicatorName]:SetupGlow(value)
                 UnitButton_UpdateAuras(b)
             end, true)
         elseif setting == "iconStyle" then
             F.IterateAllUnitButtons(function(b)
+                if not BD(b).indicators[indicatorName] then return end
                 BD(b).indicators[indicatorName]:SetIconStyle(value)
                 UnitButton_UpdateAuras(b)
             end, true)
@@ -904,20 +995,24 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
         elseif setting == "checkbutton" then
             if value == "showGroupNumber" then
                 F.IterateAllUnitButtons(function(b)
+                    if not BD(b).indicators[indicatorName] then return end
                     BD(b).indicators[indicatorName]:ShowGroupNumber(value2)
                 end, true)
             elseif value == "showTimer" then
                 F.IterateAllUnitButtons(function(b)
+                    if not BD(b).indicators[indicatorName] then return end
                     BD(b).indicators[indicatorName]:SetShowTimer(value2)
                     UnitButton_UpdateStatusText(b)
                 end, true)
             elseif value == "showBackground" then
                 F.IterateAllUnitButtons(function(b)
+                    if not BD(b).indicators[indicatorName] then return end
                     BD(b).indicators[indicatorName]:ShowBackground(value2)
                 end, true)
             elseif value == "hideIfEmptyOrFull" then
                 if indicatorName == "powerText" then
                     F.IterateAllUnitButtons(function(b)
+                        if not BD(b).indicators[indicatorName] then return end
                         BD(b).indicators[indicatorName]:SetHideIfEmptyOrFull(value2)
                         B.UpdatePowerText(b)
                     end, true)
@@ -930,15 +1025,18 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
             elseif value == "onlyEnableNotInCombat" then
                 indicatorBooleans[indicatorName] = value2
                 F.IterateAllUnitButtons(function(b)
+                    if not BD(b).indicators[indicatorName] then return end
                     BD(b).indicators[indicatorName]:Hide()
                 end, true)
             elseif value == "showStack" then
                 F.IterateAllUnitButtons(function(b)
+                    if not BD(b).indicators[indicatorName] then return end
                     BD(b).indicators[indicatorName]:ShowStack(value2)
                     UnitButton_UpdateAuras(b)
                 end, true)
             elseif value == "showAnimation" then
                 F.IterateAllUnitButtons(function(b)
+                    if not BD(b).indicators[indicatorName] then return end
                     BD(b).indicators[indicatorName]:ShowAnimation(value2)
                     UnitButton_UpdateAuras(b)
                 end, true)
@@ -958,30 +1056,33 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
                 end, true)
             elseif value == "showTooltip" then
                 F.IterateAllUnitButtons(function(b)
+                    if not BD(b).indicators[indicatorName] then return end
                     BD(b).indicators[indicatorName]:ShowTooltip(value2)
                 end, true)
             elseif value == "enableBlacklistShortcut" then
                 F.IterateAllUnitButtons(function(b)
+                    if not BD(b).indicators[indicatorName] then return end
                     BD(b).indicators[indicatorName]:EnableBlacklistShortcut(value2)
                 end, true)
             elseif value == "hideDamager" then
                 F.IterateAllUnitButtons(function(b)
+                    if not BD(b).indicators[indicatorName] then return end
                     BD(b).indicators[indicatorName]:HideDamager(value2)
                     UnitButton_UpdateRole(b)
                 end, true)
             elseif value == "fadeOut" then
                 F.IterateAllUnitButtons(function(b)
+                    if not BD(b).indicators[indicatorName] then return end
                     BD(b).indicators[indicatorName]:SetFadeOut(value2)
                     UnitButton_UpdateAuras(b)
                 end, true)
             elseif value == "smooth" then
                 F.IterateAllUnitButtons(function(b)
+                    if not BD(b).indicators[indicatorName] then return end
                     BD(b).indicators[indicatorName]:EnableSmooth(value2)
                 end, true)
             elseif value == "showDispelBorder" then
-                --! debuffs: the dispel-type border is drawn by the icons themselves, "off" == 0 thickness.
-                --! Without this branch the toggle fell through to the indicatorBooleans catch-all at the end,
-                --! clobbering indicatorBooleans["debuffs"] (the dispellableByMe filter) instead.
+                --! debuffs: the dispel-type border is drawn by the icons themselves, "off" == 0 thickness
                 F.IterateAllUnitButtons(function(b)
                     local ind = BD(b).indicators[indicatorName]
                     if not ind then return end
@@ -992,9 +1093,7 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
                     end
                 end, true)
             elseif value == "showDispelFrameBorder" then
-                --! dispels: the frame border strips are colored and shown by SetDispels, so turning the
-                --! toggle back on only takes effect on the next aura update - force one. (Turning it off
-                --! hides them right away, in SetFrameBorderEnabled.)
+                --! dispels: turning it back on only takes effect on the next aura update - force one
                 F.IterateAllUnitButtons(function(b)
                     local ind = BD(b).indicators[indicatorName]
                     if ind then
@@ -1007,6 +1106,8 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
                 end, true)
             elseif value == "showAllSpells" then
                 I.ShowAllTargetedSpells(value2)
+            elseif value == "targetedSpellsGlowEnabled" then
+                I.SetTargetedSpellsGlowEnabled(value2)
             else
                 indicatorBooleans[indicatorName] = value2
             end
@@ -1120,7 +1221,10 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
         elseif setting == "auras" then
             -- indicator auras changed, hide them all, then recheck whether to show
             F.IterateAllUnitButtons(function(b)
-                BD(b).indicators[indicatorName]:Hide()
+                --! not every button carries every custom indicator (a pet button has no indicator1, for one)
+                local ind = BD(b).indicators[indicatorName]
+                if not ind then return end
+                ind:Hide()
                 UnitButton_UpdateAuras(b)
             end, true)
         elseif setting == "debuffBlacklist" or setting == "dispelBlacklist" or setting == "defensives" or setting == "externals" or setting == "bigDebuffs" or setting == "debuffTypeColor" then
@@ -1130,10 +1234,12 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
         elseif setting == "speed" then
             -- only Actions indicator has this option for now
             F.IterateAllUnitButtons(function(b)
+                if not BD(b).indicators[indicatorName] then return end
                 BD(b).indicators[indicatorName]:SetSpeed(value)
             end, true)
         elseif setting == "shape" then
             F.IterateAllUnitButtons(function(b)
+                if not BD(b).indicators[indicatorName] then return end
                 BD(b).indicators[indicatorName]:SetShape(value)
             end, true)
         end
@@ -1305,20 +1411,20 @@ local function UnitButton_UpdateDebuffs(self)
                 BD(self)._debuffs_glow_current[topGlowType] = topGlowOptions
             end
             for t, o in pairs(BD(self)._debuffs_glow_current) do
-                BD(self).indicators.raidDebuffs:ShowGlow(t, o, true)
+                SafeRaidDebuffsGlowCall(BD(self).indicators.raidDebuffs, "ShowGlow", t, o, true)
             end
             for t, _ in pairs(BD(self)._debuffs_glow_cache) do
                 if not BD(self)._debuffs_glow_current[t] then
-                    BD(self).indicators.raidDebuffs:HideGlow(t)
+                    SafeRaidDebuffsGlowCall(BD(self).indicators.raidDebuffs, "HideGlow", t)
                     BD(self)._debuffs_glow_cache[t] = nil
                 end
             end
             wipe(BD(self)._debuffs_glow_current)
         else
-            BD(self).indicators.raidDebuffs:ShowGlow(topGlowType, topGlowOptions)
+            SafeRaidDebuffsGlowCall(BD(self).indicators.raidDebuffs, "ShowGlow", topGlowType, topGlowOptions)
         end
     else
-        BD(self).indicators.raidDebuffs:Hide()
+        SafeRaidDebuffsGlowCall(BD(self).indicators.raidDebuffs, "Hide")
     end
 
     -- update debuffs
@@ -1536,7 +1642,7 @@ local function ResetAuraTables(self)
     wipe(BD(self)._debuffs_glow_current)
     wipe(BD(self)._debuffs_glow_cache)
     if BD(self).indicators.raidDebuffs then
-        BD(self).indicators.raidDebuffs:HideGlow()
+        SafeRaidDebuffsGlowCall(BD(self).indicators.raidDebuffs, "HideGlow")
     end
 end
 

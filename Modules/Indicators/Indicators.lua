@@ -1621,6 +1621,12 @@ if Cell.isRetail then
         ["text"] = L["Boss Debuffs"],
         ["value"] = "highlightDebuffs",
     })
+else
+    --! Classic-only "Glow" custom indicator type entry (left out on Retail)
+    tinsert(typeItems, {
+        ["text"] = L["Glow"],
+        ["value"] = "glow",
+    })
 end
 
 local auraTypeItems = {
@@ -1930,13 +1936,16 @@ elseif Cell.isCata or Cell.isWrath then
         ["shieldBar"] = {"enabled", "checkbutton:onlyShowOvershields", "color-alpha", "height", "shieldBarPosition", "frameLevel"},
         ["powerWordShield"] = {L["To show shield value, |cffff2727Glyph of Power Word: Shield|r is required"], "enabled", "checkbutton:shieldByMe", "shape", "size-square", "position", "frameLevel"},
         ["aoeHealing"] = {"|cffb7b7b7"..L["Display a gradient texture when the unit receives a heal from your certain healing spells."], "enabled", "builtInAoEHealings", "customAoEHealings", "color", "height"},
-        ["externalCooldowns"] = {L["Even if disabled, the settings below affect \"Externals + Defensives\" indicator"], "enabled", "builtInExternals", "customExternals", midnightDurationVisibility, "checkbutton:showAnimation", "size", "num:5", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
-        ["defensiveCooldowns"] = {L["Even if disabled, the settings below affect \"Externals + Defensives\" indicator"], "enabled", "builtInDefensives", "customDefensives", midnightDurationVisibility, "checkbutton:showAnimation", "size", "num:5", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
-        ["allCooldowns"] = {"enabled", midnightDurationVisibility, "checkbutton:showAnimation", "size", "num:5", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
+        --! Classic-only: glowOptions (Retail/Mists above already has it)
+        ["externalCooldowns"] = {L["Even if disabled, the settings below affect \"Externals + Defensives\" indicator"], "enabled", "builtInExternals", "customExternals", midnightDurationVisibility, "checkbutton:showAnimation", "glowOptions", "size", "num:5", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
+        ["defensiveCooldowns"] = {L["Even if disabled, the settings below affect \"Externals + Defensives\" indicator"], "enabled", "builtInDefensives", "customDefensives", midnightDurationVisibility, "checkbutton:showAnimation", "glowOptions", "size", "num:5", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
+        ["allCooldowns"] = {"enabled", midnightDurationVisibility, "checkbutton:showAnimation", "glowOptions", "size", "num:5", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
         ["dispels"] = {"enabled", "dispelFilters", "highlightType", "dispelBlacklist", "iconStyle", "orientation", "checkbutton-thickness:showDispelFrameBorder:"..DISPELS_FRAME_BORDER_TOOLTIP, "size-square", "position", "frameLevel"},
         ["debuffs"] = {"enabled", "checkbutton:dispellableByMe", "checkbutton6:nonPlayerAuras:"..(L["nonPlayerAurasTip"] or ""), "debuffBlacklist", "bigDebuffs", midnightDurationVisibility, "animationStyle", "checkbutton5:showStack", "checkbutton3:showTooltip:"..DEBUFFS_TOOLTIP1, "checkbutton4:enableBlacklistShortcut:"..DEBUFFS_TOOLTIP2, "size-normal-big", "num:10", "orientation", "checkbutton-thickness:showDispelBorder:"..DEBUFFS_TOOLTIP3, "position", "frameLevel", "font1:stackFont", midnightDurationFont},
-        ["raidDebuffs"] = {"|cffb7b7b7"..L["You can config debuffs in %s"]:format(Cell.GetAccentColorString()..L["Raid Debuffs"].."|r"), "enabled", "checkbutton2:showTooltip:"..DEBUFFS_TOOLTIP1, midnightDurationVisibility, "animationStyle", "checkbutton5:showStack", "size-border", "num:3", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
-        ["targetedSpells"] = {TARGETED_SPELLS_PTR_WARNING, TARGETED_SPELLS_PARTY_NOTE, "enabled", "checkbutton:showAllSpells", "targetedSpellsList", "targetedSpellsDisplayMode", "size-border", "num:3", "orientation", "position", "frameLevel", "font"},
+        --! Classic-only: checkbutton:onlyShowTopGlow
+        ["raidDebuffs"] = {"|cffb7b7b7"..L["You can config debuffs in %s"]:format(Cell.GetAccentColorString()..L["Raid Debuffs"].."|r"), "enabled", "checkbutton:onlyShowTopGlow", "checkbutton2:showTooltip:"..DEBUFFS_TOOLTIP1, midnightDurationVisibility, "animationStyle", "checkbutton5:showStack", "size-border", "num:3", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
+        --! Classic-only: simple on/off glow checkbox instead of Retail's type/color picker, no PTR warning
+        ["targetedSpells"] = {TARGETED_SPELLS_PARTY_NOTE, "enabled", "checkbutton:showAllSpells", "checkbutton2:targetedSpellsGlowEnabled", "targetedSpellsList", "targetedSpellsDisplayMode", "size-border", "num:3", "orientation", "position", "frameLevel", "font"},
         ["targetCounter"] = {"|cffff2727"..L["HIGH CPU USAGE"].."!|r |cffb7b7b7"..L["Check all visible enemy nameplates."], "enabled", "targetCounterFilters", "color", "position", "frameLevel", "font-noOffset"},
         ["actions"] = {"|cffb7b7b7"..L["Play animation when the unit uses a specific spell/item. The list is global shared, not layout-specific."], "enabled", "actionsPreview", "actionsList"},
         ["healthThresholds"] = {"enabled", "thresholds", "thickness"},
@@ -1966,13 +1975,16 @@ elseif Cell.isVanilla or Cell.isTBC then
         ["aggroBorder"] = {"enabled", "thickness", "frameLevel"},
         ["aggroBar"] = {"enabled", "size", "position", "frameLevel"},
         ["aoeHealing"] = {"|cffb7b7b7"..L["Display a gradient texture when the unit receives a heal from your certain healing spells."], "enabled", "builtInAoEHealings", "customAoEHealings", "color", "height"},
-        ["externalCooldowns"] = {L["Even if disabled, the settings below affect \"Externals + Defensives\" indicator"], "enabled", "builtInExternals", "customExternals", midnightDurationVisibility, "checkbutton:showAnimation", "size", "num:5", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
-        ["defensiveCooldowns"] = {L["Even if disabled, the settings below affect \"Externals + Defensives\" indicator"], "enabled", "builtInDefensives", "customDefensives", midnightDurationVisibility, "checkbutton:showAnimation", "size", "num:5", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
-        ["allCooldowns"] = {"enabled", midnightDurationVisibility, "checkbutton:showAnimation", "size", "num:5", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
+        --! Classic-only: glowOptions (Retail/Mists above already has it)
+        ["externalCooldowns"] = {L["Even if disabled, the settings below affect \"Externals + Defensives\" indicator"], "enabled", "builtInExternals", "customExternals", midnightDurationVisibility, "checkbutton:showAnimation", "glowOptions", "size", "num:5", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
+        ["defensiveCooldowns"] = {L["Even if disabled, the settings below affect \"Externals + Defensives\" indicator"], "enabled", "builtInDefensives", "customDefensives", midnightDurationVisibility, "checkbutton:showAnimation", "glowOptions", "size", "num:5", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
+        ["allCooldowns"] = {"enabled", midnightDurationVisibility, "checkbutton:showAnimation", "glowOptions", "size", "num:5", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
         ["dispels"] = {"enabled", "dispelFilters", "highlightType", "dispelBlacklist", "iconStyle", "orientation", "checkbutton-thickness:showDispelFrameBorder:"..DISPELS_FRAME_BORDER_TOOLTIP, "size-square", "position", "frameLevel"},
         ["debuffs"] = {"enabled", "checkbutton:dispellableByMe", "checkbutton6:nonPlayerAuras:"..(L["nonPlayerAurasTip"] or ""), "debuffBlacklist", "bigDebuffs", midnightDurationVisibility, "animationStyle", "checkbutton5:showStack", "checkbutton3:showTooltip:"..DEBUFFS_TOOLTIP1, "checkbutton4:enableBlacklistShortcut:"..DEBUFFS_TOOLTIP2, "size-normal-big", "num:10", "orientation", "checkbutton-thickness:showDispelBorder:"..DEBUFFS_TOOLTIP3, "position", "frameLevel", "font1:stackFont", midnightDurationFont},
-        ["raidDebuffs"] = {"|cffb7b7b7"..L["You can config debuffs in %s"]:format(Cell.GetAccentColorString()..L["Raid Debuffs"].."|r"), "enabled", "checkbutton2:showTooltip:"..DEBUFFS_TOOLTIP1, midnightDurationVisibility, "animationStyle", "checkbutton5:showStack", "size-border", "num:3", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
-        ["targetedSpells"] = {TARGETED_SPELLS_PTR_WARNING, TARGETED_SPELLS_PARTY_NOTE, "enabled", "checkbutton:showAllSpells", "targetedSpellsList", "targetedSpellsDisplayMode", "size-border", "num:3", "orientation", "position", "frameLevel", "font"},
+        --! Classic-only: checkbutton:onlyShowTopGlow
+        ["raidDebuffs"] = {"|cffb7b7b7"..L["You can config debuffs in %s"]:format(Cell.GetAccentColorString()..L["Raid Debuffs"].."|r"), "enabled", "checkbutton:onlyShowTopGlow", "checkbutton2:showTooltip:"..DEBUFFS_TOOLTIP1, midnightDurationVisibility, "animationStyle", "checkbutton5:showStack", "size-border", "num:3", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
+        --! Classic-only: simple on/off glow checkbox instead of Retail's type/color picker, no PTR warning
+        ["targetedSpells"] = {TARGETED_SPELLS_PARTY_NOTE, "enabled", "checkbutton:showAllSpells", "checkbutton2:targetedSpellsGlowEnabled", "targetedSpellsList", "targetedSpellsDisplayMode", "size-border", "num:3", "orientation", "position", "frameLevel", "font"},
         ["targetCounter"] = {"|cffff2727"..L["HIGH CPU USAGE"].."!|r |cffb7b7b7"..L["Check all visible enemy nameplates."], "enabled", "targetCounterFilters", "color", "position", "frameLevel", "font-noOffset"},
         ["actions"] = {"|cffb7b7b7"..L["Play animation when the unit uses a specific spell/item. The list is global shared, not layout-specific."], "enabled", "actionsPreview", "actionsList"},
         ["healthThresholds"] = {"enabled", "thresholds", "thickness"},
@@ -1986,7 +1998,8 @@ local function ShowIndicatorSettings(id)
     settingsFrame.scrollFrame:ResetScroll()
     settingsFrame.scrollFrame:ResetHeight()
 
-    if Cell.isRetail and id == "__auraBlacklist" then
+    if id == "__auraBlacklist" then
+        if not Cell.isRetail then return end -- Retail-only feature, not a real indicator on Classic
         local widgets = Cell.CreateIndicatorSettings(settingsFrame.scrollFrame.content, {"builtInAuraBlacklist"})
         for _, w in pairs(widgets) do
             w:SetPoint("TOPLEFT")
@@ -2112,13 +2125,18 @@ local function ShowIndicatorSettings(id)
             tinsert(settingsTable, 2, "castBy")
         end
 
-        if indicatorTable["auraType"] == "buff" and indicatorTable["name"] ~= "Healers" then
+        --! "Healers"-named indicators skip these on Retail only (they auto-feed the native Healers
+        --! panel there); Classic needs "Track by name" since every spell rank is its own spell ID.
+        if indicatorTable["auraType"] == "buff" and not (Cell.isRetail and indicatorTable["name"] == "Healers") then
             tinsert(settingsTable, 3, "checkbutton2:trackByName")
-            tinsert(settingsTable, 4, "checkbutton:keepInHealers:" .. (L["keepInHealersTip"] or ""))
+            if Cell.isRetail then
+                tinsert(settingsTable, 4, "checkbutton:keepInHealers:" .. (L["keepInHealersTip"] or ""))
+            end
         end
 
         -- tips
-        if indicatorType == "glow" then
+        --! only show "glow disabled" warning on Retail - Classic has glow working now
+        if indicatorType == "glow" and Cell.isRetail then
             tinsert(settingsTable, 1, "warning:"..(L["glowDisabledApiWarning"] or ""))
         else
             tinsert(settingsTable, 1, "|cffb7b7b7"..L["The priority of spells decreases from top to bottom."].." "..L["Indicator settings are part of Layout settings which are account-wide."])
@@ -2637,10 +2655,9 @@ LoadIndicatorList = function()
     listFrame.scrollFrame:Reset()
     currentLayoutIssueReport = F.GetCompatibilityLayoutIssues and F.GetCompatibilityLayoutIssues(currentLayout)
 
-    -- Find the index of "debuffs" so we can insert Aura Blacklist right above it.
-    -- Hidden where F.IsLiveAuraScanBlocked() is true (Retail).
+    -- Find the index of "debuffs" so we can insert Aura Blacklist right above it. Retail-only.
     local debuffsIndex
-    if not (F.IsLiveAuraScanBlocked and F.IsLiveAuraScanBlocked()) then
+    if Cell.isRetail and not (F.IsLiveAuraScanBlocked and F.IsLiveAuraScanBlocked()) then
         for idx, t in pairs(currentLayoutTable["indicators"]) do
             if t["indicatorName"] == "debuffs" then
                 debuffsIndex = idx
@@ -2817,10 +2834,12 @@ LoadIndicatorList = function()
             i:ShowGlowPreview()
         end
 
+        --! Classic only: skip this generic glow for targetedSpells, it already has its own now (Retail
+        --! keeps it since its own glow is still a no-op stub there)
         if CellDB["indicatorPreview"]["showAll"] then
             if i:IsObjectType("Texture") or i:IsObjectType("FontString") then
                 LCG.PixelGlow_Start(i.preview)
-            else
+            elseif Cell.isRetail or not i.isTargetedSpells then
                 if i.isRaidDebuffs or i.isPrivateAuras or i.isCrowdControls then
                     LCG.PixelGlow_Start(i, nil, nil, nil, nil, nil, 2, 2)
                 elseif i.isTargetedSpells then
@@ -2837,7 +2856,7 @@ LoadIndicatorList = function()
         else
             if i:IsObjectType("Texture") or i:IsObjectType("FontString") then
                 LCG.PixelGlow_Stop(i.preview)
-            else
+            elseif Cell.isRetail or not i.isTargetedSpells then
                 LCG.PixelGlow_Stop(i)
             end
         end
