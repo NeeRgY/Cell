@@ -42,6 +42,9 @@ select(2, ...).L = setmetatable({
     ["healthFadeTip"] = "Dims a unit's frame (using the Out of Range Alpha value) once their health rises above the threshold below, so healthy units fade into the background and hurt ones stand out.",
     ["Health Fade Threshold"] = "Health Fade Threshold",
     ["Color Duration Text Unavailable Tip"] = "This is unfortunately no longer possible since patch 12.0.0 due to Blizzard API restrictions.",
+    ["spellRequestRetailDisabledTip"] = "Disabled on Retail: enabling this currently triggers a Blizzard \"forbidden action\" error, likely due to stricter security rules since patch 12.0.0.",
+    ["dispelRequestRetailDisabledTip"] = "Disabled on Retail: enabling this currently triggers a Blizzard \"forbidden action\" error, likely due to stricter security rules since patch 12.0.0.",
+    ["shieldAbsorbClassicDisabledTip"] = "Heal Absorb, Shield and Overshield are greyed out on Classic / TBC because Blizzard doesn't expose the needed API there yet.",
     ["Private Dispel Overlay"] = "Private Dispel Overlay",
     ["Show private dispel overlay"] = "Show private dispel overlay",
     ["Only dispellable by me"] = "Only dispellable by me",
@@ -155,6 +158,15 @@ select(2, ...).L = setmetatable({
     ["BACKUP_TIPS2"] = "Note for Classic players: Backups do not include Click-Castings and Layout Auto Switch of other characters",
     ["CHANGELOGS"] = [[
 
+
+        <h1>r277.9.8.5 - NeRgY</h1>
+        <h2>Retail</h2>
+        <p>* Fixed the custom "Border" indicator's color not updating correctly, and "Keep in Healers indicator" not excluding its spells; removed "Fade out over time" from it (Retail only) since it could cause a serious freeze.</p>
+        <h2>Classic / TBC</h2>
+        <p>* Fixed Raid Debuffs' glow still getting stuck and throwing errors in some cases even after the last fix.</p>
+        <p>* Fixed some dungeons/raids (e.g. Mana Tombs) not matching their configured Raid Debuffs correctly.</p>
+        <p>* Fixed party/raid frames staying blank after leaving a group mid-combat.</p>
+        <br/>
 
         <h1>r277.9.8.4 - NeRgY</h1>
         <h2>Classic / TBC</h2>

@@ -7,6 +7,16 @@ local soloFrame = CreateFrame("Frame", "CellSoloFrame", Cell.frames.mainFrame, "
 Cell.frames.soloFrame = soloFrame
 soloFrame:SetAllPoints(Cell.frames.mainFrame)
 
+if not Cell.isRetail then
+    -- debug: observe the driver's actual show/hide behavior
+    soloFrame:HookScript("OnShow", function()
+        F.Debug("|cff77bbffsoloFrame:|r OnShow InCombat="..tostring(InCombatLockdown()))
+    end)
+    soloFrame:HookScript("OnHide", function()
+        F.Debug("|cff77bbffsoloFrame:|r OnHide InCombat="..tostring(InCombatLockdown()))
+    end)
+end
+
 local playerButton = CreateFrame("Button", soloFrame:GetName().."Player", soloFrame, "CellUnitButtonTemplate")
 -- playerButton.type = "main" -- layout setup
 playerButton:SetAttribute("unit", "player")
@@ -19,36 +29,7 @@ local petButton = CreateFrame("Button", soloFrame:GetName().."Pet", soloFrame, "
 petButton:SetAttribute("unit", "pet")
 Cell.unitButtons.solo["pet"] = petButton
 
-local function SoloFrame_UpdateLayout(layout, which)
-    -- visibility
-    if Cell.isRetail then
-        if Cell.vars.groupType ~= "solo" or Cell.vars.isHidden then
-            UnregisterAttributeDriver(soloFrame, "state-visibility")
-            soloFrame:Hide()
-            return
-        else
-            RegisterAttributeDriver(soloFrame, "state-visibility", "[@raid1,exists] hide;[@party1,exists] hide;[group] hide;show")
-        end
-    else
-        -- Classic-only: the driver stays registered and reacts natively, so it's never stuck
-        -- unregistered mid-combat (see F.IsGroupTypeHidden).
-        if F.IsGroupTypeHidden(Cell.vars.soloLayoutGroupType) then
-            RegisterAttributeDriver(soloFrame, "state-visibility", "hide")
-            soloFrame:Hide()
-            return
-        else
-            RegisterAttributeDriver(soloFrame, "state-visibility", "[@raid1,exists] hide;[@party1,exists] hide;[group] hide;show")
-        end
-
-        if Cell.vars.groupType ~= "solo" then
-            -- lay out ahead of time even while inactive, so it's not blank the first time combat shows it
-            local ownLayout = F.GetGroupTypeLayout(Cell.vars.soloLayoutGroupType)
-            if not ownLayout then return end
-            layout = ownLayout
-        end
-    end
-
-    -- update
+local function SoloFrame_ApplyLayoutContent(layout, which)
     layout = CellDB["layouts"][layout]
 
     if not which or strfind(which, "size$") then
@@ -101,8 +82,30 @@ local function SoloFrame_UpdateLayout(layout, which)
             end
         end
     end
+end
+
+local function SoloFrame_UpdateLayout(layout, which)
+    -- visibility
+    if Cell.isRetail then
+        if Cell.vars.groupType ~= "solo" or Cell.vars.isHidden then
+            UnregisterAttributeDriver(soloFrame, "state-visibility")
+            soloFrame:Hide()
+            return
+        else
+            RegisterAttributeDriver(soloFrame, "state-visibility", "[@raid1,exists] hide;[@party1,exists] hide;[group] hide;show")
+        end
+    else
+        -- Classic: retired in favor of PartyFrame's showSolo (see PartyFrame.lua) -- kept hidden
+        -- here rather than deleted, in case that approach needs to be reverted.
+        RegisterAttributeDriver(soloFrame, "state-visibility", "hide")
+        soloFrame:Hide()
+        return
+    end
+
+    SoloFrame_ApplyLayoutContent(layout, which)
 
     if not which or which == "pet" then
+        layout = CellDB["layouts"][layout]
         if layout["pet"]["soloEnabled"] then
             RegisterAttributeDriver(petButton, "state-visibility", "[nopet] hide; [vehicleui] hide; show")
         else

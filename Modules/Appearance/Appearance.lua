@@ -1665,6 +1665,15 @@ local function CreateUnitButtonStylePane()
     absorbCB:SetPoint("TOPLEFT", predCB, "BOTTOMLEFT", 0, -28)
     absorbCB:SetEnabled(Cell.isRetail or Cell.isMists)
 
+    -- why Heal Absorb/Shield/Overshield are greyed out on Classic/TBC
+    if not (Cell.isRetail or Cell.isMists) then
+        local shieldAbsorbInfo = Cell.CreateButton(unitButtonPane, nil, "accent-hover", {17, 17}, nil, nil, nil, nil, nil, L["Info"], L["shieldAbsorbClassicDisabledTip"])
+        shieldAbsorbInfo:SetPoint("LEFT", absorbCB, "RIGHT", 165, 0)
+        shieldAbsorbInfo.tex = shieldAbsorbInfo:CreateTexture(nil, "ARTWORK")
+        shieldAbsorbInfo.tex:SetAllPoints(shieldAbsorbInfo)
+        shieldAbsorbInfo.tex:SetTexture("Interface\\AddOns\\Cell\\Media\\Icons\\info2.tga")
+    end
+
     absorbColorPicker = Cell.CreateColorPicker(unitButtonPane, L["Heal Absorb"], true, function(r, g, b, a)
         CellDB["appearance"]["healAbsorb"][2][1] = r
         CellDB["appearance"]["healAbsorb"][2][2] = g

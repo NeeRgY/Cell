@@ -124,8 +124,16 @@ local function BuildExcludeSpellMap()
             if t and t.enabled and t.auraType == "buff" and t.name ~= "Healers"
                 and not t.keepInHealers and type(t.auras) == "table" then
                 for k, v in pairs(t.auras) do
-                    local n = tonumber(v)
-                    if not (n and n > 0) then n = tonumber(k) end
+                    -- hasColor types (border/bars/blocks) store {spellId, color} pairs, not a plain
+                    -- spellId -- tonumber(v) on that table is always nil, and falling back to the
+                    -- array index k (not a real spell ID) silently excluded the wrong ID entirely
+                    local n
+                    if type(v) == "table" then
+                        n = tonumber(v[1])
+                    else
+                        n = tonumber(v)
+                        if not (n and n > 0) then n = tonumber(k) end
+                    end
                     addId(n)
                 end
             end

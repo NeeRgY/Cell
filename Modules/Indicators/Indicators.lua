@@ -155,8 +155,22 @@ local function ApplyMidnightBorderIconPreview(indicator, debuffType)
     end
 end
 
+-- border/bars/blocks store their color per-spell inside "auras" rather than a dedicated color
+-- setting -- find the first one that actually has a color assigned, same as the real frame does.
+local function GetFirstAuraColor(auras, fallback)
+    if type(auras) == "table" then
+        for _, v in pairs(auras) do
+            if type(v) == "table" and type(v[2]) == "table" then
+                return v[2]
+            end
+        end
+    end
+    return fallback
+end
+
 local function SetOnUpdate(indicator, type, icon, stack, extra)
     indicator.preview = indicator.preview or CreateFrame("Frame", nil, indicator)
+    indicator._previewExtra = extra -- mutable so SetPreviewColor can update it later without a full re-init
     local isMidnightBorderIcon = Cell.isMidnight and indicator.cooldown
         and indicator.cooldown._SetCooldown and not indicator.cooldown.SetMinMaxValues
     local function doPreview()
@@ -171,11 +185,15 @@ local function SetOnUpdate(indicator, type, icon, stack, extra)
             ApplyMidnightBorderIconPreview(indicator)
             indicator:Show()
         else
-            indicator:SetCooldown(GetTime(), 13, type, icon, stack or 0, false, extra)
+            indicator:SetCooldown(GetTime(), 13, type, icon, stack or 0, false, indicator._previewExtra)
             if isMidnightBorderIcon then
                 ApplyMidnightBorderIconPreview(indicator, type)
             end
         end
+    end
+    function indicator:SetPreviewColor(color)
+        indicator._previewExtra = color
+        indicator.preview.elapsedTime = 13 -- update now!
     end
     indicator.preview:SetScript("OnUpdate", function(self, elapsed)
         self.elapsedTime = (self.elapsedTime or 0) + elapsed
@@ -728,11 +746,19 @@ local function InitIndicator(indicatorName)
             end)
             SetOnUpdate(indicator, nil, 134400, 0)
         elseif indicator.indicatorType == "border" then
-            function indicator:SetFadeOut(fadeOut)
-                indicator.fadeOut = fadeOut
-                indicator.preview.elapsedTime = 13 -- update now!
+            -- "Fade out over time" is Classic-only (see CustomAuraDisplay.lua) -- on Retail, ignore
+            -- it even if it's still saved true from before there was a checkbox to turn it off. Still
+            -- define the method as a no-op (rather than leaving it nil) -- the generic init path below
+            -- calls indicator:SetFadeOut(t["fadeOut"]) unconditionally whenever a value is saved.
+            if Cell.isRetail then
+                function indicator:SetFadeOut() end
+            else
+                function indicator:SetFadeOut(fadeOut)
+                    indicator.fadeOut = fadeOut
+                    indicator.preview.elapsedTime = 13 -- update now!
+                end
             end
-            local color = {1, 0.26667, 0.4}
+            local color = GetFirstAuraColor(indicator.configs and indicator.configs["auras"], {1, 0.26667, 0.4})
             SetOnUpdate(indicator, nil, 134400, 0, color)
         else
             SetOnUpdate(indicator, nil, 134400, 5)
@@ -1035,6 +1061,11 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
             end
             if indicatorName == "healthThresholds" then
                 indicator:UpdateThresholdsPreview()
+            end
+        elseif setting == "auras" then
+            -- border/bars/blocks: value2 is the new aura list, its per-spell colors feed the preview
+            if indicator.SetPreviewColor then
+                indicator:SetPreviewColor(GetFirstAuraColor(value2, {1, 0.26667, 0.4}))
             end
         elseif setting == "height" then
             P.Height(indicator, value)
@@ -2054,7 +2085,11 @@ local function ShowIndicatorSettings(id)
         elseif indicatorType == "blocks" then
             settingsTable = {"enabled", "auras-picker", "checkbutton3:showStack", "durationVisibility", "animationStyle", "size", "num:10", "numPerLine:10", "spacing", "orientation", "position", "frameLevel", "font1:stackFont", "font2:durationFont"}
         elseif indicatorType == "border" then
-            settingsTable = {"enabled", "checkbutton3:fadeOut", "auras-picker", "thickness", "frameLevel:50"}
+            -- "Fade out over time" is Classic-only (native Retail engine doesn't support it -- the
+            -- OnUpdate ticker needed for it caused a rebuild-loop freeze there, see CustomAuraDisplay.lua)
+            settingsTable = Cell.isRetail
+                and {"enabled", "auras-picker", "thickness", "frameLevel:50"}
+                or {"enabled", "checkbutton3:fadeOut", "auras-picker", "thickness", "frameLevel:50"}
         elseif indicatorType == "highlightDebuffs" then
             settingsTable = {"warning:"..(L["bossDebuffsApiWarning"] or ""), "enabled", "highlightDebuffFilters", midnightDurationVisibility, "animationStyle", "checkbutton5:showStack", CELL_RECTANGULAR_CUSTOM_INDICATOR_ICONS and "size" or "size-square", "num:3", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont}
         end

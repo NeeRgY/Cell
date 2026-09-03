@@ -51,6 +51,15 @@ local function CreateDRPane()
         Cell.StopRainbowText(drTypeOptionsBtn:GetFontString())
     end)
     drEnabledCB:SetPoint("TOPLEFT", drPane, "TOPLEFT", 5, -80)
+    -- Retail: same ADDON_ACTION_FORBIDDEN issue as Spell Request.
+    if Cell.isRetail then
+        drEnabledCB:SetEnabled(false)
+        local drEnabledDisabledOverlay = CreateFrame("Frame", nil, drPane)
+        drEnabledDisabledOverlay:SetAllPoints(drEnabledCB)
+        drEnabledDisabledOverlay:SetFrameLevel(drEnabledCB:GetFrameLevel()+1)
+        drEnabledDisabledOverlay:EnableMouse(true)
+        Cell.SetTooltips(drEnabledDisabledOverlay, "ANCHOR_TOPLEFT", 0, 3, L["Enabled"], L["dispelRequestRetailDisabledTip"])
+    end
     ---------------------------------------------------------------------------------
 
     -- dispellable ------------------------------------------------------------------

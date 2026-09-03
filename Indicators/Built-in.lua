@@ -1012,9 +1012,27 @@ local currentAreaDebuffs = {}
 local eventFrame = CreateFrame("Frame")
 eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 
+-- GetInstanceInfo() and GetRealZoneText() can each return a name that doesn't match how
+-- instanceNameMapping (built from the Encounter Journal) keys this instance -- e.g. some
+-- Classic dungeons only match on the zone text. Try both, prefer whichever one actually
+-- has an entry, instead of hardcoding a single source and silently missing the other.
+local function GetBestInstanceNameForDebuffs()
+    if not IsInInstance() then
+        return F.GetInstanceName()
+    end
+    local mapping = Cell.snippetVars.instanceNameMapping
+    local byInfo = GetInstanceInfo()
+    local byZone = GetRealZoneText()
+    if mapping then
+        if byInfo and mapping[byInfo] then return byInfo end
+        if byZone and mapping[byZone] then return byZone end
+    end
+    return byInfo or byZone or ""
+end
+
 local function UpdateDebuffsForCurrentZone(instanceName)
     wipe(currentAreaDebuffs)
-    local iName = F.GetInstanceName()
+    local iName = GetBestInstanceNameForDebuffs()
     if iName == "" then return end
 
     if iName == instanceName or instanceName == nil then
@@ -1098,39 +1116,68 @@ function I.IsDebuffUseElapsedTime(spellName, spellId)
     return t["useElapsedTime"]
 end
 
+-- Pixel/Shine/Proc glow state is tracked on the target frame by LCG itself, keyed only by an
+-- optional "key" string (empty by default). Any other caller in the addon (or another addon) that
+-- glows the SAME frame with the default key shares that exact tracking field -- if it stops its
+-- glow without going through our nil-clearing below, our field goes stale (still pointing at an
+-- already-released pool object) and OUR next Stop call throws "doesn't belong to this pool",
+-- regardless of how carefully we guard our own calls. A dedicated key isolates RaidDebuffs
+-- completely so no other caller can ever collide with it.
+local GLOW_KEY = "CellRaidDebuffs"
+
+local hiders = LCG and {
+    ["Normal"] = function(target) LCG.ButtonGlow_Stop(target) end,
+    ["Pixel"] = function(target) LCG.PixelGlow_Stop(target, GLOW_KEY) end,
+    ["Shine"] = function(target) LCG.AutoCastGlow_Stop(target, GLOW_KEY) end,
+    ["Proc"] = function(target) LCG.ProcGlow_Stop(target, GLOW_KEY) end,
+} or {}
+
+-- LCG's Pixel/Shine/Proc stop functions never nil their tracking field on the target frame after
+-- releasing it back to the pool, so a second Stop on the same (already-released) field throws
+-- "doesn't belong to this pool" -- and since this runs from a hooksecurefunc'd Hide() that anyone
+-- can trigger (not just our own guarded calls), an uncaught error here aborts whatever's left of
+-- the stop-all loop below, leaving other glow types stuck on permanently. Track+clear it ourselves.
+local GLOW_STOP_FIELD = {
+    ["Normal"] = "_ButtonGlow",
+    ["Pixel"] = "_PixelGlow" .. GLOW_KEY,
+    ["Shine"] = "_AutoCastGlow" .. GLOW_KEY,
+    ["Proc"] = "_ProcGlow" .. GLOW_KEY,
+}
+
+local function SafeStopGlow(glowType, target)
+    local stop = hiders[glowType]
+    if not stop or not target then return end
+    local fieldName = GLOW_STOP_FIELD[glowType]
+    if fieldName and not target[fieldName] then return end -- not currently glowing, nothing to release
+    pcall(stop, target)
+    if fieldName then target[fieldName] = nil end
+end
+
 local function RaidDebuffs_ShowGlow(self, glowType, glowOptions, noHiding)
     if not LCG then return end
     local target = self.parent
     if not noHiding then
-        if glowType ~= "Normal" then LCG.ButtonGlow_Stop(target) end
-        if glowType ~= "Pixel" then LCG.PixelGlow_Stop(target) end
-        if glowType ~= "Shine" then LCG.AutoCastGlow_Stop(target) end
-        LCG.ProcGlow_Stop(target)
+        if glowType ~= "Normal" then SafeStopGlow("Normal", target) end
+        if glowType ~= "Pixel" then SafeStopGlow("Pixel", target) end
+        if glowType ~= "Shine" then SafeStopGlow("Shine", target) end
+        SafeStopGlow("Proc", target)
     end
     if glowType == "Normal" then
         LCG.ButtonGlow_Start(target, glowOptions and glowOptions[1])
     elseif glowType == "Pixel" and glowOptions then
-        LCG.PixelGlow_Start(target, glowOptions[1], glowOptions[2], glowOptions[3], glowOptions[4], glowOptions[5])
+        LCG.PixelGlow_Start(target, glowOptions[1], glowOptions[2], glowOptions[3], glowOptions[4], glowOptions[5], nil, nil, nil, GLOW_KEY)
     elseif glowType == "Shine" and glowOptions then
-        LCG.AutoCastGlow_Start(target, glowOptions[1], glowOptions[2], glowOptions[3], glowOptions[4])
+        LCG.AutoCastGlow_Start(target, glowOptions[1], glowOptions[2], glowOptions[3], glowOptions[4], nil, nil, GLOW_KEY)
     end
 end
 
-local hiders = LCG and {
-    ["Normal"] = LCG.ButtonGlow_Stop,
-    ["Pixel"] = LCG.PixelGlow_Stop,
-    ["Shine"] = LCG.AutoCastGlow_Stop,
-    ["Proc"] = LCG.ProcGlow_Stop,
-} or {}
-
 local function RaidDebuffs_HideGlow(self, glowType)
-    local stop = type(glowType) == "string" and hiders[glowType]
-    if stop then
-        stop(self.parent)
+    if type(glowType) == "string" then
+        SafeStopGlow(glowType, self.parent)
         return
     end
-    for _, fn in pairs(hiders) do
-        fn(self.parent)
+    for type_ in pairs(hiders) do
+        SafeStopGlow(type_, self.parent)
     end
 end
 

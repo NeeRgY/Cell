@@ -7,6 +7,15 @@ local partyFrame = CreateFrame("Frame", "CellPartyFrame", Cell.frames.mainFrame,
 Cell.frames.partyFrame = partyFrame
 partyFrame:SetAllPoints(Cell.frames.mainFrame)
 
+if not Cell.isRetail then
+    partyFrame:HookScript("OnShow", function()
+        F.Debug("|cff77bbffpartyFrame:|r OnShow InCombat="..tostring(InCombatLockdown()))
+    end)
+    partyFrame:HookScript("OnHide", function()
+        F.Debug("|cff77bbffpartyFrame:|r OnHide InCombat="..tostring(InCombatLockdown()))
+    end)
+end
+
 local header = CreateFrame("Frame", "CellPartyFrameHeader", partyFrame, "SecureGroupHeaderTemplate")
 F.ApplyMidnightGroupHeaderAttributes(header)
 header:SetAttribute("template", "CellUnitButtonTemplate")
@@ -63,6 +72,11 @@ header:SetAttribute("maxColumns", 1)
 header:SetAttribute("unitsPerColumn", 5)
 header:SetAttribute("showPlayer", true)
 header:SetAttribute("showParty", true)
+if not Cell.isRetail then
+    -- native showSolo shows just the player when ungrouped, via the same combat-safe header logic
+    -- that already handles party members -- replaces the old separate SoloFrame driver approach.
+    header:SetAttribute("showSolo", true)
+end
 
 --! to make needButtons == 5 cheat configureChildren in SecureGroupHeaders.lua
 header:SetAttribute("startingIndex", -4)
@@ -102,17 +116,31 @@ local function PartyFrame_UpdateLayout(layout, which)
             RegisterAttributeDriver(partyFrame, "state-visibility", "[@raid1,exists] hide;[@party1,exists] show;[group:party] show;hide")
         end
     else
-        -- Classic-only: the driver stays registered and reacts natively, so it's never stuck
-        -- unregistered mid-combat (see F.IsGroupTypeHidden).
-        if F.IsGroupTypeHidden(Cell.vars.partyLayoutGroupType) then
+        -- Classic: with showSolo on the header, this frame stays shown for solo too -- the 0-vs-N
+        -- member count is left entirely to the header's own native logic.
+        local isHiddenNow
+        if Cell.vars.groupType == "solo" then
+            isHiddenNow = F.IsGroupTypeHidden(Cell.vars.soloLayoutGroupType)
+        else
+            isHiddenNow = F.IsGroupTypeHidden(Cell.vars.partyLayoutGroupType)
+        end
+        F.Debug("|cff77bbffPartyFrame_UpdateLayout:|r groupType="..tostring(Cell.vars.groupType)
+            .." IsGroupTypeHidden="..tostring(isHiddenNow)
+            .." InCombat="..tostring(InCombatLockdown()))
+        if isHiddenNow then
             RegisterAttributeDriver(partyFrame, "state-visibility", "hide")
             partyFrame:Hide()
             return
         else
-            RegisterAttributeDriver(partyFrame, "state-visibility", "[@raid1,exists] hide;[@party1,exists] show;[group:party] show;hide")
+            RegisterAttributeDriver(partyFrame, "state-visibility", "[@raid1,exists] hide;show")
         end
 
-        if Cell.vars.groupType ~= "party" then
+        if Cell.vars.groupType == "solo" then
+            -- Solo: use Solo's own layout, not Party's, even though this header renders it
+            local ownLayout = F.GetGroupTypeLayout(Cell.vars.soloLayoutGroupType)
+            if not ownLayout then return end
+            layout = ownLayout
+        elseif Cell.vars.groupType ~= "party" then
             -- lay out ahead of time even while inactive, so it's not blank the first time combat shows it
             local ownLayout = F.GetGroupTypeLayout(Cell.vars.partyLayoutGroupType)
             if not ownLayout then return end

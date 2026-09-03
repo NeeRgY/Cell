@@ -165,6 +165,16 @@ local function CreateSRPane()
         Cell.Fire("UpdateRequests", "spellRequest")
     end)
     srEnabledCB:SetPoint("TOPLEFT", srPane, "TOPLEFT", 5, -100)
+    -- Retail: RegisterEvent throws ADDON_ACTION_FORBIDDEN here (pre-existing taint).
+    -- Disabled widgets eat their own OnEnter/OnLeave, hence the separate tooltip overlay.
+    if Cell.isRetail then
+        srEnabledCB:SetEnabled(false)
+        local srEnabledDisabledOverlay = CreateFrame("Frame", nil, srPane)
+        srEnabledDisabledOverlay:SetAllPoints(srEnabledCB)
+        srEnabledDisabledOverlay:SetFrameLevel(srEnabledCB:GetFrameLevel()+1)
+        srEnabledDisabledOverlay:EnableMouse(true)
+        Cell.SetTooltips(srEnabledDisabledOverlay, "ANCHOR_TOPLEFT", 0, 3, L["Enabled"], L["spellRequestRetailDisabledTip"])
+    end
     ---------------------------------------------------------------------------------
 
     -- check exists -----------------------------------------------------------------

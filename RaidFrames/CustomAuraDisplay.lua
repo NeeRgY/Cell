@@ -329,14 +329,50 @@ local function ResolveIconTexture(button, fallback)
     return fallback
 end
 
-local function HookIconColor(icon, texMap, firstColor, apply)
-    if not icon or not apply then return end
-    local function onTex(_, tex)
-        apply((texMap and tex and texMap[tex]) or (texMap and tex and texMap[tostring(tex)]) or firstColor)
+-- Re-init can run again on an already-hooked (pooled/reused) icon or button -- hooksecurefunc has
+-- no "unhook", so a naive re-call would stack a new hook on top of the old one every time, each
+-- carrying its own stale texMap/apply closure, all firing on every future update. Hook exactly
+-- once per object and just repoint its state to the latest texMap/apply on every call instead.
+local function HookIconColor(icon, texMap, firstColor, apply, button)
+    if not apply then return end
+
+    if icon then
+        icon._cellColorState = icon._cellColorState or {}
+        local state = icon._cellColorState
+        state.texMap, state.firstColor, state.apply = texMap, firstColor, apply
+        if not icon._cellColorHooked then
+            icon._cellColorHooked = true
+            local function onTex(_, tex)
+                local s = icon._cellColorState
+                if not s then return end
+                s.apply((s.texMap and tex and s.texMap[tex]) or (s.texMap and tex and s.texMap[tostring(tex)]) or s.firstColor)
+            end
+            hooksecurefunc(icon, "SetTexture", onTex)
+            if icon.SetAtlas then
+                hooksecurefunc(icon, "SetAtlas", onTex)
+            end
+        end
     end
-    hooksecurefunc(icon, "SetTexture", onTex)
-    if icon.SetAtlas then
-        hooksecurefunc(icon, "SetAtlas", onTex)
+
+    -- Belt and braces: some AuraButton templates update their icon by calling SetIcon(button, ...)
+    -- again per aura rather than mutating the texture object we handed it, which the hooks above
+    -- would never see. Catch that case too by hooking the button's own SetIcon directly.
+    if button and button.SetIcon then
+        button._cellColorState2 = button._cellColorState2 or {}
+        local state2 = button._cellColorState2
+        state2.texMap, state2.firstColor, state2.apply = texMap, firstColor, apply
+        if not button._cellColorHooked then
+            button._cellColorHooked = true
+            hooksecurefunc(button, "SetIcon", function(_, iconValue)
+                local s = button._cellColorState2
+                if not s then return end
+                local tex = iconValue
+                if type(tex) == "table" and tex.GetTexture then
+                    tex = tex:GetTexture()
+                end
+                s.apply((s.texMap and tex and s.texMap[tex]) or (s.texMap and tex and s.texMap[tostring(tex)]) or s.firstColor)
+            end)
+        end
     end
 end
 
@@ -637,7 +673,7 @@ local function MakeInitBorderButton(cfg, unitButton)
         HookIconColor(ResolveIconTexture(button, icon), texMap, firstColor or { r, g, b, a }, function(color)
             if not color then return end
             tex:SetVertexColor(UnpackColor(color, { r, g, b, a }))
-        end)
+        end, button)
 
         local mask = button:CreateMaskTexture()
         mask:SetTexture(Cell.vars.emptyTexture, "CLAMPTOWHITE", "CLAMPTOWHITE")
@@ -659,24 +695,11 @@ local function MakeInitBorderButton(cfg, unitButton)
         mask2:SetPoint("BOTTOMRIGHT", tex2, "BOTTOMRIGHT", -(thickness + inset), thickness + inset)
         tex2:AddMaskTexture(mask2)
 
-        -- "Fade out over time"
-        if cfg.fadeOut then
-            local cooldown = AttachInvisibleCooldown(button)
-            local elapsed = 0
-            tex:SetScript("OnUpdate", function(self, e)
-                elapsed = elapsed + e
-                if elapsed < 0.1 then return end
-                elapsed = 0
-                local startMs, durationMs = cooldown:GetCooldownTimes()
-                if not startMs or not durationMs or durationMs <= 0 then
-                    self:SetAlpha(1)
-                    return
-                end
-                local remain = F.GetRemain(startMs / 1000, durationMs / 1000)
-                if remain < 0 then remain = 0 end
-                self:SetAlpha(remain / (durationMs / 1000) * 0.9 + 0.1)
-            end)
-        end
+        -- "Fade out over time" is not supported here (Classic-only, via the legacy Border indicator
+        -- in Indicators/Base.lua) -- the OnUpdate ticker this needed caused a rebuild-loop freeze on
+        -- the native engine for reasons never fully pinned down, so it was removed entirely rather
+        -- than left half-working. cfg.fadeOut is intentionally ignored below, even for anyone with
+        -- it still saved true from before -- the border just always renders at full alpha.
 
         local host = F.BD(unitButton).widgets and F.BD(unitButton).widgets.highLevelFrame or unitButton
         local base = (host.GetFrameLevel and host:GetFrameLevel())
@@ -773,7 +796,7 @@ local function MakeInitBarButton(cfg)
             if not (bar and color) then return end
             local cr, cg, cb, ca = UnpackColor(color, { r, g, b, a })
             bar:SetStatusBarColor(cr, cg, cb, ca)
-        end)
+        end, button)
 
         AttachStackAndDuration(button, cfg, button, bar)
     end
@@ -815,7 +838,7 @@ local function MakeInitBlockButton(cfg)
             HookIconColor(ResolveIconTexture(button, icon), texMap, firstColor or { r, g, b, a }, function(color)
                 if not color then return end
                 fill:SetColorTexture(UnpackColor(color, { r, g, b, a }))
-            end)
+            end, button)
         end
 
         local animFrame = AttachDurationAnimation(button, cfg)
@@ -997,9 +1020,13 @@ local function MakeParkKey(cfg)
         cfg.showAnimation,
         F.StampAuraFont(cfg.font),
         StampCfgValue(cfg.colors),
+        -- per-spell colors (bars/blocks/border) live inside cfg.auras, which otherwise isn't part of
+        -- this key at all -- without this, editing a color reuses the old pooled/parked button
+        -- instead of rebuilding. A plain counter bumped only on an actual "auras" edit (see below) --
+        -- confirmed working, no rebuild-loop issue like cfg.fadeOut had.
+        cfg._auraColorGen,
         cfg.texture,
         cfg.thickness,
-        cfg.fadeOut,
         cfg.barOrientation,
         StampCfgValue(cfg.duration),
         StampCfgValue(cfg.stack),
@@ -1249,8 +1276,29 @@ local function EnsureIndicatorContainer(unitButton, cfg, allowCreate)
     end
 
     if st.container then
+        local now = GetTime()
         local want = MakeParkKey(cfg)
-        if st.parkKey ~= want or st.initVersion ~= INIT_VERSION or not st.container:GetParent() then
+        local mismatched = st.parkKey ~= want or st.initVersion ~= INIT_VERSION or not st.container:GetParent()
+        if mismatched then
+            -- Circuit breaker: something (still being tracked down) can make the park key compare
+            -- unequal to itself between two back-to-back syncs, causing an endless destroy/rebuild
+            -- loop that freezes the client. If this container was JUST rebuilt a moment ago, don't
+            -- destroy it again -- ride out the stale key rather than fight a busy-loop.
+            if st.lastBuildTime and (now - st.lastBuildTime) < 0.5 then
+                st.rapidRebuilds = (st.rapidRebuilds or 0) + 1
+                if st.rapidRebuilds > 3 then
+                    if not st.rebuildLoopWarned then
+                        st.rebuildLoopWarned = true
+                        F.Print("|cFFFF7D7DCustom AuraContainer:|r suppressed a rebuild loop for '"..tostring(name).."'")
+                    end
+                    mismatched = false
+                end
+            else
+                st.rapidRebuilds = 0
+                st.rebuildLoopWarned = nil
+            end
+        end
+        if mismatched then
             DestroyContainer(st)
         end
     end
@@ -1284,6 +1332,7 @@ local function EnsureIndicatorContainer(unitButton, cfg, allowCreate)
     st.initVersion = INIT_VERSION
     st.createFailed = nil
     st.failedVersion = nil
+    st.lastBuildTime = GetTime()
     return true
 end
 
@@ -1454,6 +1503,20 @@ if SUPPORTED then
                 C_Timer.After(0, I.RefreshAllCustomAuraDisplays)
             end
             return
+        end
+        if setting == "auras" then
+            -- bump a per-indicator counter so MakeParkKey sees a real, stable change and forces a
+            -- rebuild (picking up the new color) -- only on an actual edit, never spontaneously
+            local layoutTable = Cell.vars.currentLayoutTable
+            local indicators = layoutTable and layoutTable.indicators
+            if indicators then
+                for i = 1, #indicators do
+                    if indicators[i].indicatorName == indicatorName then
+                        indicators[i]._auraColorGen = (indicators[i]._auraColorGen or 0) + 1
+                        break
+                    end
+                end
+            end
         end
         if setting == "create" or setting == "remove"
             or setting == "auras" or setting == "position" or setting == "size"
