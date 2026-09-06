@@ -44,6 +44,15 @@ local bossIdToName = {
     [0] = L["General"]
 }
 
+-- GetInstanceInfo()/GetRealZoneText() on a Classic-era client can return a different (usually
+-- older, pre-Cataclysm-rename) name than the one this data is keyed under -- e.g. the Stockade
+-- data is keyed "The Stockade" (the modern name), but Classic/TBC/Wrath clients report
+-- "Stormwind Stockade". Register these as extra keys pointing at the same instance, instead of
+-- renaming the canonical entry (which would break the same lookup on later client versions).
+local INSTANCE_NAME_ALIASES = {
+    ["The Stockade"] = {"Stormwind Stockade"},
+}
+
 local function LoadList()
     local list = F.GetExpansionList()
 
@@ -55,6 +64,12 @@ local function LoadList()
             local iId = iTable["id"]
             instanceNameMapping[iName] = eName..":"..i..":"..iId -- NOTE: used for searching current zone debuffs & switch to current instance
             instanceIdToName[iId] = iName
+            local aliases = INSTANCE_NAME_ALIASES[iName]
+            if aliases then
+                for _, alias in ipairs(aliases) do
+                    instanceNameMapping[alias] = instanceNameMapping[iName]
+                end
+            end
 
             for _, bTable in pairs(iTable["bosses"]) do
 

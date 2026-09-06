@@ -2543,6 +2543,20 @@ function I.CreateAura_Overlay(name, parent)
     overlay.EnableSmooth = Overlay_EnableSmooth
     overlay.SetColors = Overlay_SetColors
 
+    -- Unlike the "bar" indicator (see bar:SetOrientation above), this never got a friendly
+    -- SetOrientation override -- so HandleIndicators (UnitButton.lua) calling it with
+    -- "left-to-right"/"top-to-bottom"/etc crashed straight into Blizzard's native
+    -- StatusBar:SetOrientation, which only accepts "HORIZONTAL"/"VERTICAL".
+    overlay._SetOrientation = overlay.SetOrientation
+    function overlay:SetOrientation(orientation)
+        if orientation == "vertical" or orientation == "top-to-bottom" or orientation == "bottom-to-top" then
+            self:_SetOrientation("VERTICAL")
+        else
+            self:_SetOrientation("HORIZONTAL")
+        end
+        self:SetReverseFill(orientation == "right-to-left" or orientation == "bottom-to-top")
+    end
+
     return overlay
 end
 
@@ -2916,7 +2930,12 @@ local function Border_OnUpdate(border, elapsed)
 
         border._remain = F.GetRemain(border._start, border._duration)
         if border._remain < 0 then border._remain = 0 end
-        border:SetAlpha(border._remain / border._duration * 0.9 + 0.1)
+        local pct = border._remain / border._duration
+        if border.durationBarPreview and border.previewDurationBar then
+            border.previewDurationBar:SetValue(pct)
+        else
+            border:SetAlpha(pct * 0.9 + 0.1)
+        end
     end
 end
 
@@ -2924,8 +2943,38 @@ local function Border_SetFadeOut(border, fadeOut)
     border.fadeOut = fadeOut
 end
 
+-- Retail-only: Border settings-panel preview shows a "Duration Bar" sweep instead of the
+-- (Classic-only) fade-out, matching what the native Retail engine actually renders. Reuses
+-- the same 0.1s remain/duration tracking as Border_OnUpdate above -- just swaps what it drives.
+local function Border_SetDurationBarPreview(border, enabled, reversed, color)
+    border.durationBarPreview = enabled and true or false
+    border.durationBarPreviewReversed = reversed and true or false
+    border.durationBarPreviewColor = color
+
+    if border.durationBarPreview then
+        if not border.previewDurationBar then
+            local bar = CreateFrame("StatusBar", nil, border)
+            bar:SetAllPoints(border.tex)
+            bar:EnableMouse(false)
+            bar:SetStatusBarTexture(Cell.vars.whiteTexture)
+            local barTex = bar:GetStatusBarTexture()
+            if barTex then
+                barTex:AddMaskTexture(border.mask)
+            end
+            bar:SetMinMaxValues(0, 1)
+            border.previewDurationBar = bar
+        end
+        border.previewDurationBar:SetReverseFill(border.durationBarPreviewReversed)
+        local c = color or {1, 1, 1, 1}
+        border.previewDurationBar:SetStatusBarColor(c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1)
+        border.previewDurationBar:Show()
+    elseif border.previewDurationBar then
+        border.previewDurationBar:Hide()
+    end
+end
+
 local function Border_SetCooldown(border, start, duration, _, _, _, _, color)
-    if duration ~= 0 and border.fadeOut then
+    if duration ~= 0 and (border.fadeOut or border.durationBarPreview) then
         border._start = start
         border._duration = duration
         border._elapsed = 0.1 -- update immediately
@@ -2962,8 +3011,20 @@ function I.CreateAura_Border(name, parent)
     border:Hide()
     border.indicatorType = "border"
 
-    P.Point(border, "TOPLEFT", CELL_BORDER_SIZE, -CELL_BORDER_SIZE)
-    P.Point(border, "BOTTOMRIGHT", -CELL_BORDER_SIZE, CELL_BORDER_SIZE)
+    -- parent is widgets.highLevelFrame, a direct child of the actual unit button
+    -- (see UnitButton.lua) -- walk back up to it to anchor against the health bar
+    -- instead of the whole frame, so the border doesn't wrap the power bar too
+    -- (same reasoning as the Dispels border/overlay fix).
+    local unitButton = parent:GetParent()
+    local healthBar = unitButton and F.BD(unitButton).widgets and F.BD(unitButton).widgets.healthBar
+    if healthBar then
+        border:ClearAllPoints()
+        P.Point(border, "TOPLEFT", healthBar, CELL_BORDER_SIZE, -CELL_BORDER_SIZE)
+        P.Point(border, "BOTTOMRIGHT", healthBar, -CELL_BORDER_SIZE, CELL_BORDER_SIZE)
+    else
+        P.Point(border, "TOPLEFT", CELL_BORDER_SIZE, -CELL_BORDER_SIZE)
+        P.Point(border, "BOTTOMRIGHT", -CELL_BORDER_SIZE, CELL_BORDER_SIZE)
+    end
 
     local mask = border:CreateMaskTexture()
     border.mask = mask
@@ -2986,6 +3047,7 @@ function I.CreateAura_Border(name, parent)
 
     border.SetCooldown = Border_SetCooldown
     border.SetFadeOut = Border_SetFadeOut
+    border.SetDurationBarPreview = Border_SetDurationBarPreview
     border.SetThickness = Border_SetThickness
     border.UpdatePixelPerfect = Border_UpdatePixelPerfect
 

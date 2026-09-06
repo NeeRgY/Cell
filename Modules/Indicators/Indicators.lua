@@ -224,6 +224,31 @@ local function ResolveHealersPreviewAnimationStyle(cfg)
     return "clock"
 end
 
+-- Retail-only "Icon Glow" preview for Debuffs/Highlight Debuffs. These preview icons are
+-- the legacy Base.lua objects (not the native engine's pooled buttons), so it's safe to just
+-- attach EngineGlow.lua directly here, same as the standalone "Glow" custom indicator's own
+-- preview hookup.
+local function ApplyDebuffGlowPreview(indicator, indicatorName, enabled)
+    if not (Cell.isRetail and F.StartEngineGlow and F.StopEngineGlow) then return end
+    local count = (indicatorName == "raidDebuffs") and 3 or 10
+    for i = 1, count do
+        local ind = indicator[i]
+        if ind then
+            if enabled then
+                if not ind._cellGlowPreviewFrame then
+                    local gf = CreateFrame("Frame", nil, ind)
+                    gf:EnableMouse(false)
+                    gf:SetAllPoints(ind)
+                    ind._cellGlowPreviewFrame = gf
+                end
+                F.StartEngineGlow(ind._cellGlowPreviewFrame, "proc", 1, 0.85, 0.1, 1)
+            elseif ind._cellGlowPreviewFrame then
+                F.StopEngineGlow(ind._cellGlowPreviewFrame)
+            end
+        end
+    end
+end
+
 local function ApplyHealersPreviewAnimationStyle(indicator, style)
     if not indicator then return end
     style = (style == "none" or style == "vertical" or style == "clock") and style or "clock"
@@ -466,6 +491,7 @@ local function InitIndicator(indicatorName)
         for i = 1, 10 do
             SetOnUpdate(indicator[i], types[i], icons[i], i)
         end
+        ApplyDebuffGlowPreview(indicator, "debuffs", indicator.configs and indicator.configs.highlightDebuffGlow)
 
     elseif indicatorName == "dispels" then
         indicator.isDispels = true
@@ -477,6 +503,10 @@ local function InitIndicator(indicatorName)
             {["Poison"]=true},
             {["Bleed"]=true},
         }
+        -- Cycled alongside debuffTypes below so "Scales with Health" is visibly
+        -- distinguishable from "Entire Health Bar" in the preview -- at a permanent
+        -- 100% health they'd look identical.
+        local previewHealthPercents = {1, 0.6, 0.35, 0.8, 0.2}
 
         -- override
         indicator.SetDispels = function(self, dispelTypes)
@@ -505,10 +535,10 @@ local function InitIndicator(indicatorName)
                         end
                         self.highlight:SetTexCoord(0, 1, 0, 1)
                         self.highlight:SetVertexColor(r, g, b, 1)
-                    else -- entire / entire-solid (full health bar)
+                    else -- fill / full (legacy: entire / entire-solid)
                         self.highlight:SetTexture(Cell.vars.whiteTexture)
                         self.highlight:SetTexCoord(0, 1, 0, 1)
-                        self.highlight:SetVertexColor(r, g, b, self.highlightType == "entire-solid" and 1 or 0.5)
+                        self.highlight:SetVertexColor(r, g, b, self.highlightOpacity or 0.5)
                     end
                     if indicator.isVisible then self.highlight:Show() end
                 end
@@ -545,8 +575,18 @@ local function InitIndicator(indicatorName)
             indicator._UpdateHighlight = indicator.UpdateHighlight
         end
 
-        indicator.UpdateHighlight = function(self, highlightType)
-            indicator:_UpdateHighlight(highlightType)
+        if not indicator._hookedHealthReset then
+            indicator._hookedHealthReset = true
+            -- Restore the shared preview button to full health once Dispels' own
+            -- preview stops running, so switching to a different indicator's
+            -- settings doesn't leave it stuck at whatever percent this cycle left.
+            indicator:HookScript("OnHide", function()
+                F.BD(previewButton).widgets.healthBar:SetValue(1)
+            end)
+        end
+
+        indicator.UpdateHighlight = function(self, highlightType, opacity)
+            indicator:_UpdateHighlight(highlightType, opacity)
 
             -- preview
             indicator.elapsed = 1
@@ -555,6 +595,7 @@ local function InitIndicator(indicatorName)
                 indicator.elapsed = indicator.elapsed + elapsed
                 if indicator.elapsed >= 1 then
                     indicator.elapsed = 0
+                    F.BD(previewButton).widgets.healthBar:SetValue(previewHealthPercents[indicator.current])
                     indicator:SetDispels(debuffTypes[indicator.current])
                     indicator.current = indicator.current + 1
                     if indicator.current == 6 then indicator.current = 1 end
@@ -565,20 +606,34 @@ local function InitIndicator(indicatorName)
     elseif indicatorName == "raidDebuffs" then
         indicator.isRaidDebuffs = true
         local types = {"", "Curse", "Magic"}
+        -- a real-looking debuff icon instead of the generic "?" placeholder
+        local previewIcon = 136118 -- Spell_Shadow_CurseOfSargeras
         local function HideBorder(i)
             if indicator[i].border then
                 indicator[i].border:Hide()
             end
         end
+        -- was hardcoded to CLOCK always, ignoring the Animation setting entirely -- resolve it
+        -- from the live config instead, same "none"/"vertical"/"clock" mapping every other
+        -- preview's animationStyle uses (ApplyHealersPreviewAnimationStyle isn't reused here:
+        -- calling its Hide()+Show() from inside this very OnShow handler would re-trigger it).
+        local function ApplyRaidDebuffsAnimStyle(ind)
+            local style = (indicator.configs and indicator.configs.animationStyle) or "clock"
+            if style == "none" then
+                if ind.ShowAnimation then ind:ShowAnimation(false) end
+            else
+                if ind.SetCooldownStyle then ind:SetCooldownStyle(style == "vertical" and "VERTICAL" or "CLOCK") end
+                if ind.ShowAnimation then ind:ShowAnimation(true) end
+            end
+        end
         for i = 1, 3 do
             indicator[i]:HookScript("OnShow", function()
-                if indicator[i].SetCooldownStyle and indicator[i].style ~= "CLOCK" then
-                    indicator[i]:SetCooldownStyle("CLOCK")
-                end
-                indicator[i]:SetCooldown(GetTime(), 13, types[i], "Interface\\Icons\\INV_Misc_QuestionMark", 7)
+                ApplyRaidDebuffsAnimStyle(indicator[i])
+                indicator[i]:SetCooldown(GetTime(), 13, types[i], previewIcon, 7)
                 HideBorder(i)
                 indicator[i].cooldown:SetScript("OnCooldownDone", function()
-                    indicator[i]:SetCooldown(GetTime(), 13, types[i], "Interface\\Icons\\INV_Misc_QuestionMark", 7)
+                    ApplyRaidDebuffsAnimStyle(indicator[i])
+                    indicator[i]:SetCooldown(GetTime(), 13, types[i], previewIcon, 7)
                     HideBorder(i)
                 end)
             end)
@@ -587,6 +642,7 @@ local function InitIndicator(indicatorName)
                 indicator[i].cooldown:SetScript("OnCooldownDone", nil)
             end)
         end
+        ApplyDebuffGlowPreview(indicator, "raidDebuffs", indicator.configs and indicator.configs.highlightDebuffGlow)
 
     elseif indicatorName == "privateAuras" then
         indicator.isPrivateAuras = true
@@ -745,16 +801,24 @@ local function InitIndicator(indicatorName)
                 indicator.preview.elapsedTime = 13 -- update now!
             end)
             SetOnUpdate(indicator, nil, 134400, 0)
+            -- Retail: the real indicator renders through EngineGlow.lua (Pulse/Flash) instead
+            -- of the legacy LibCustomGlow style above -- mirror that here too, or the preview
+            -- stays blank. Runs once; live style/color edits are re-applied where "glowStyle"
+            -- and "color" get dispatched below.
+            if Cell.isRetail and F.StartEngineGlow then
+                local cfg = indicator.configs or {}
+                local col = cfg["color"] or { 1, 0.85, 0.1, 1 }
+                F.StartEngineGlow(indicator, cfg["glowStyle"], col[1], col[2], col[3], col[4])
+            end
         elseif indicator.indicatorType == "border" then
-            -- "Fade out over time" is Classic-only (see CustomAuraDisplay.lua) -- on Retail, ignore
-            -- it even if it's still saved true from before there was a checkbox to turn it off. Still
-            -- define the method as a no-op (rather than leaving it nil) -- the generic init path below
-            -- calls indicator:SetFadeOut(t["fadeOut"]) unconditionally whenever a value is saved.
-            if Cell.isRetail then
-                function indicator:SetFadeOut() end
-            else
-                function indicator:SetFadeOut(fadeOut)
-                    indicator.fadeOut = fadeOut
+            function indicator:SetFadeOut(fadeOut)
+                indicator.fadeOut = fadeOut
+                indicator.preview.elapsedTime = 13 -- update now!
+            end
+            local baseSetDurationBarPreview = indicator.SetDurationBarPreview
+            if baseSetDurationBarPreview then
+                function indicator:SetDurationBarPreview(enabled, reversed, color)
+                    baseSetDurationBarPreview(indicator, enabled, reversed, color)
                     indicator.preview.elapsedTime = 13 -- update now!
                 end
             end
@@ -894,7 +958,7 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
                 if t["color"] then
                     if t["indicatorName"] == "nameText" or t["indicatorName"] == "healthText" or t["indicatorName"] == "powerText" then
                         indicator:UpdatePreviewColor(t["color"])
-                    else
+                    elseif indicator.SetColor then
                         indicator:SetColor(unpack(t["color"]))
                     end
                 end
@@ -973,7 +1037,20 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
                 end
                 -- update fadeOut
                 if type(t["fadeOut"]) == "boolean" then
-                    indicator:SetFadeOut(t["fadeOut"])
+                    if Cell.isRetail and (indicator.indicatorType == "texture" or indicator.indicatorType == "border") then
+                        -- "Fade out over time" was removed from these on Retail (never worked on
+                        -- the native engine) -- self-heal any old profile that still has it
+                        -- enabled, so the settings-panel preview doesn't keep fading when there's
+                        -- no checkbox left to turn it off.
+                        t["fadeOut"] = false
+                        indicator:SetFadeOut(false)
+                    else
+                        indicator:SetFadeOut(t["fadeOut"])
+                    end
+                end
+                -- update duration bar preview (Retail Border only)
+                if indicator.SetDurationBarPreview then
+                    indicator:SetDurationBarPreview(t["durationBar"], t["durationBarReverse"], t["color"])
                 end
                 -- update shape
                 if t["shape"] then
@@ -1107,8 +1184,19 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
         elseif setting == "color" then
             if indicatorName == "nameText" or indicatorName == "healthText" or indicatorName == "powerText" then
                 indicator:UpdatePreviewColor(value)
-            else
+            elseif indicator.SetDurationBarPreview then
+                indicator:SetDurationBarPreview(indicator.durationBarPreview, indicator.durationBarPreviewReversed, value)
+            elseif Cell.isRetail and indicator.indicatorType == "glow" and F.StartEngineGlow then
+                local cfg = indicator.configs or {}
+                F.StartEngineGlow(indicator, cfg["glowStyle"], value[1], value[2], value[3], value[4])
+            elseif indicator.SetColor then
                 indicator:SetColor(unpack(value))
+            end
+        elseif setting == "glowStyle" then
+            if Cell.isRetail and indicator.indicatorType == "glow" and F.StartEngineGlow then
+                local cfg = indicator.configs or {}
+                local col = cfg["color"] or { 1, 0.85, 0.1, 1 }
+                F.StartEngineGlow(indicator, value, col[1], col[2], col[3], col[4])
             end
         elseif setting == "colors" then
             indicator:SetColors(value)
@@ -1205,8 +1293,18 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
             elseif value == "fadeOut" then
                 indicator:SetFadeOut(value2)
                 -- indicator:SetCooldown(GetTime(), 13)
+            elseif value == "durationBar" then
+                if indicator.SetDurationBarPreview then
+                    indicator:SetDurationBarPreview(value2, indicator.durationBarPreviewReversed, indicator.durationBarPreviewColor)
+                end
+            elseif value == "durationBarReverse" then
+                if indicator.SetDurationBarPreview then
+                    indicator:SetDurationBarPreview(indicator.durationBarPreview, value2, indicator.durationBarPreviewColor)
+                end
             elseif value == "smooth" then
                 indicator:EnableSmooth(value2)
+            elseif value == "highlightDebuffGlow" then
+                ApplyDebuffGlowPreview(indicator, indicatorName, value2)
             end
         elseif setting == "animationStyle" then
             ApplyHealersPreviewAnimationStyle(indicator, value)
@@ -1276,7 +1374,7 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
                 indicator:SetFont(unpack(value["font"]))
             end
             -- update color
-            if value["color"] then
+            if value["color"] and indicator.SetColor then
                 indicator:SetColor(unpack(value["color"]))
             end
             -- update colors
@@ -1309,7 +1407,16 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
             end
             -- update fadeOut
             if type(value["fadeOut"]) == "boolean" then
-                indicator:SetFadeOut(value["fadeOut"])
+                if Cell.isRetail and (indicator.indicatorType == "texture" or indicator.indicatorType == "border") then
+                    value["fadeOut"] = false
+                    indicator:SetFadeOut(false)
+                else
+                    indicator:SetFadeOut(value["fadeOut"])
+                end
+            end
+            -- update duration bar preview (Retail Border only)
+            if indicator.SetDurationBarPreview then
+                indicator:SetDurationBarPreview(value["durationBar"], value["durationBarReverse"], value["color"])
             end
             -- update glow
             if value["glowOptions"] then
@@ -1652,13 +1759,13 @@ if Cell.isRetail then
         ["text"] = L["Boss Debuffs"],
         ["value"] = "highlightDebuffs",
     })
-else
-    --! Classic-only "Glow" custom indicator type entry (left out on Retail)
-    tinsert(typeItems, {
-        ["text"] = L["Glow"],
-        ["value"] = "glow",
-    })
 end
+-- "Glow" re-enabled on Retail too -- see the native-engine glow investigation
+-- (EngineGlow.lua / CustomAuraDisplay.lua's MakeInitGlowButton).
+tinsert(typeItems, {
+    ["text"] = L["Glow"],
+    ["value"] = "glow",
+})
 
 local auraTypeItems = {
     {
@@ -1922,10 +2029,10 @@ if Cell.isRetail or Cell.isMists then
             or {"|cffb7b7b7"..I.GetTankActiveMitigationString(), "enabled", "color-class", "size", "position", "frameLevel"},
         ["dispels"] = {"enabled", "dispelFilters", "highlightType", "dispelBlacklist", "iconStyle", "orientation", "checkbutton-thickness:showDispelFrameBorder:"..DISPELS_FRAME_BORDER_TOOLTIP, "size-square", "position", "frameLevel"},
         ["debuffs"] = Cell.isRetail
-            and {"enabled", "checkbutton:dispellableByMe", "checkbutton6:nonPlayerAuras:"..(L["nonPlayerAurasTip"] or ""), midnightDurationVisibility, "animationStyle", "checkbutton5:showStack", "checkbutton3:showTooltip:"..DEBUFFS_TOOLTIP1, "size-square", "num:10", "orientation", "checkbutton-thickness:showDispelBorder:"..DEBUFFS_TOOLTIP3, "position", "frameLevel", "font1:stackFont", midnightDurationFont}
+            and {"enabled", "checkbutton:dispellableByMe", "checkbutton6:nonPlayerAuras:"..(L["nonPlayerAurasTip"] or ""), "checkbutton4:highlightDebuffGlow", midnightDurationVisibility, "animationStyle", "checkbutton5:showStack", "checkbutton3:showTooltip:"..DEBUFFS_TOOLTIP1, "size-square", "num:10", "orientation", "checkbutton-thickness:showDispelBorder:"..DEBUFFS_TOOLTIP3, "position", "frameLevel", "font1:stackFont", midnightDurationFont}
             or {"enabled", "checkbutton:dispellableByMe", "checkbutton6:nonPlayerAuras:"..(L["nonPlayerAurasTip"] or ""), "bigDebuffs", midnightDurationVisibility, "checkbutton2:showAnimation", "checkbutton5:showStack", "checkbutton3:showTooltip:"..DEBUFFS_TOOLTIP1, "checkbutton4:enableBlacklistShortcut:"..DEBUFFS_TOOLTIP2, "size-normal-big", "num:10", "orientation", "checkbutton-thickness:showDispelBorder:"..DEBUFFS_TOOLTIP3, "position", "frameLevel", "font1:stackFont", midnightDurationFont},
         ["raidDebuffs"] = Cell.isRetail
-            and {"warning:"..(L["bossDebuffsApiWarning"] or ""), "enabled", "highlightDebuffFilters", "checkbutton2:showTooltip:"..DEBUFFS_TOOLTIP1, midnightDurationVisibility, "animationStyle", "checkbutton5:showStack", "size-square", "num:3", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont}
+            and {"warning:"..(L["bossDebuffsApiWarning"] or ""), "enabled", "highlightDebuffFilters", "checkbutton2:showTooltip:"..DEBUFFS_TOOLTIP1, "checkbutton4:highlightDebuffGlow", midnightDurationVisibility, "animationStyle", "checkbutton5:showStack", "size-square", "num:3", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont}
             or {"|cffb7b7b7"..L["You can config debuffs in %s"]:format(Cell.GetAccentColorString()..L["Raid Debuffs"].."|r"), "enabled", "checkbutton2:showTooltip:"..DEBUFFS_TOOLTIP1, midnightDurationVisibility, "animationStyle", "checkbutton5:showStack", "size-border", "num:3", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
         ["privateAuras"] = {"|cffb7b7b7"..L["Due to restrictions of the private aura system, this indicator can only use Blizzard style."], "warning:"..L["Private auras are controlled by Blizzard. Positioning and style are limited, and changes may be delayed until combat ends."], "enabled", "privateAuraOptions", "size-square", "numPerLine:5", "spacing", "privateAuraOrientation", "position", "frameLevel"},
         ["targetedSpells"] = {TARGETED_SPELLS_PTR_WARNING, TARGETED_SPELLS_PARTY_NOTE, "enabled", "checkbutton:showAllSpells", "targetedSpellsList", "targetedSpellsDisplayMode", "size-border", "num:3", "orientation", "position", "frameLevel", "font"},
@@ -2065,30 +2172,75 @@ local function ShowIndicatorSettings(id)
         elseif indicatorType == "icons" then
             settingsTable = {"enabled", "auras-picker", "checkbutton3:showStack", "durationVisibility", "checkbutton4:showAnimation", CELL_RECTANGULAR_CUSTOM_INDICATOR_ICONS and "size" or "size-square", "num:10", "numPerLine:10", "spacing", "orientation", "position", "frameLevel", "font1:stackFont", "font2:durationFont"}
         elseif indicatorType == "text" then
-            settingsTable = {"enabled", "auras-picker", "duration", "stack", "colors", "position", "frameLevel", "font-noOffset"}
+            -- Same "Remaining Time <" thresholds gap as Bar/Overlay -- never worked on the native
+            -- Retail engine (needs to read a secret remaining-time value into Lua). Retail gets
+            -- the trimmed widget (just the "Color" picker); Classic keeps the full one.
+            -- "Round Up Duration Text" / "Display One Decimal Place ..." are dropped for Retail
+            -- too -- its duration formatter is fixed/native and never read those settings either.
+            settingsTable = Cell.isRetail
+                and {"enabled", "auras-picker", "duration-static", "stack", "colors-static", "position", "frameLevel", "font-noOffset"}
+                or {"enabled", "auras-picker", "duration", "stack", "colors", "position", "frameLevel", "font-noOffset"}
         elseif indicatorType == "bar" then
-            settingsTable = {"enabled", "auras-picker", "maxValue", "colors", "checkbutton3:showStack", "durationVisibility", "barOrientation", "size", "position", "frameLevel", "font1:stackFont", "font2:durationFont"}
+            -- "Set Bar Max Value" and the "Remaining Time <" color thresholds never worked on the
+            -- native Retail engine -- both need to read the aura's live remaining time into Lua,
+            -- which is a secret value there. Retail drops them; Classic keeps the full widgets.
+            settingsTable = Cell.isRetail
+                and {"enabled", "auras-picker", "colors-static", "checkbutton3:showStack", "durationVisibility", "barOrientation", "size", "position", "frameLevel", "font1:stackFont", "font2:durationFont"}
+                or {"enabled", "auras-picker", "maxValue", "colors", "checkbutton3:showStack", "durationVisibility", "barOrientation", "size", "position", "frameLevel", "font1:stackFont", "font2:durationFont"}
         elseif indicatorType == "bars" then
-            settingsTable = {"enabled", "auras-picker", "maxValue", "checkbutton3:showStack", "durationVisibility", "size", "num:10", "numPerLine:10", "spacing", "orientation", "position", "frameLevel", "font1:stackFont", "font2:durationFont"}
+            settingsTable = Cell.isRetail
+                and {"enabled", "auras-picker", "checkbutton3:showStack", "durationVisibility", "size", "num:10", "numPerLine:10", "spacing", "orientation", "position", "frameLevel", "font1:stackFont", "font2:durationFont"}
+                or {"enabled", "auras-picker", "maxValue", "checkbutton3:showStack", "durationVisibility", "size", "num:10", "numPerLine:10", "spacing", "orientation", "position", "frameLevel", "font1:stackFont", "font2:durationFont"}
         elseif indicatorType == "rect" then
             settingsTable = {"enabled", "auras-picker", "rectColors", "checkbutton3:showStack", "durationVisibility", "animationStyle", "size", "position", "frameLevel", "font1:stackFont", "font2:durationFont"}
         elseif indicatorType == "color" then
             settingsTable = {"enabled", "auras-picker", "customColors", "anchor", "frameLevel:50"}
         elseif indicatorType == "texture" then
-            settingsTable = {"enabled", "checkbutton3:fadeOut", "auras-picker", "texture", "size", "position", "frameLevel"}
+            -- "Fade out over time" never worked reliably on the native Retail engine, same story
+            -- as the Border indicator's -- cfg.fadeOut is unread in MakeInitTextureButton
+            -- (CustomAuraDisplay.lua). Retail drops the checkbox; Classic keeps it.
+            settingsTable = Cell.isRetail
+                and {"enabled", "auras-picker", "texture", "size", "position", "frameLevel"}
+                or {"enabled", "checkbutton3:fadeOut", "auras-picker", "texture", "size", "position", "frameLevel"}
         elseif indicatorType == "glow" then
-            settingsTable = {"enabled", "auras-picker", "frameLevel"}
+            -- Re-enabled for Retail: a handful of native-engine-safe glow styles
+            -- (EngineGlow.lua) -- see the "glow" custom indicator investigation. Classic still
+            -- gets the full LibCustomGlow style/color panel, untouched.
+            if Cell.isRetail and indicatorTable["color"] == nil then
+                -- existing (and freshly-created) glow indicators never had this field before --
+                -- the color picker crashes loading a nil value otherwise (same issue the Border
+                -- indicator's Duration Bar color hit).
+                indicatorTable["color"] = { 1, 0.85, 0.1, 1 }
+            end
+            settingsTable = Cell.isRetail
+                and {"enabled", "auras-picker", "glowStyle", "color-alpha", "frameLevel"}
+                or {"enabled", "auras-picker", "frameLevel"}
         elseif indicatorType == "overlay" then
-            settingsTable = {"enabled", "auras-picker", "overlayColors", "checkbutton3:smooth", "barOrientation", "frameLevel:50"}
+            -- Same "Remaining Time <" thresholds gap as the Bar indicator -- never worked on the
+            -- native Retail engine (needs to read a secret remaining-time value into Lua).
+            -- Retail gets the trimmed widget (Normal color only); Classic keeps the full one.
+            -- "Smooth" is dropped for Retail too -- the native engine never ticks the fill value
+            -- itself (Blizzard's own SetDurationBar curve drives it), so there's nothing for
+            -- Cell to smooth; cfg.smooth is unread there, same dead-setting story as Max Value.
+            settingsTable = Cell.isRetail
+                and {"enabled", "auras-picker", "colors-static", "barOrientation", "frameLevel:50"}
+                or {"enabled", "auras-picker", "overlayColors", "checkbutton3:smooth", "barOrientation", "frameLevel:50"}
         elseif indicatorType == "block" then
             settingsTable = {"enabled", "auras-picker", "blockColors", "checkbutton3:showStack", "durationVisibility", "animationStyle", "size", "position", "frameLevel", "font1:stackFont", "font2:durationFont"}
         elseif indicatorType == "blocks" then
             settingsTable = {"enabled", "auras-picker", "checkbutton3:showStack", "durationVisibility", "animationStyle", "size", "num:10", "numPerLine:10", "spacing", "orientation", "position", "frameLevel", "font1:stackFont", "font2:durationFont"}
         elseif indicatorType == "border" then
-            -- "Fade out over time" is Classic-only (native Retail engine doesn't support it -- the
-            -- OnUpdate ticker needed for it caused a rebuild-loop freeze there, see CustomAuraDisplay.lua)
+            -- "Fade out over time" (uniform alpha fade) never worked reliably on the native Retail
+            -- engine -- see CustomAuraDisplay.lua's border init. Retail gets a Duration Bar
+            -- instead, sweeping across the border in a user-picked color.
+            if Cell.isRetail and indicatorTable["color"] == nil then
+                -- existing (and freshly-created) border indicators never had this field before --
+                -- the color picker below crashes loading a nil value, which silently aborts the
+                -- rest of the settings list (auras-picker, thickness, frameLevel never show up)
+                indicatorTable["color"] = { 1, 1, 1, 1 }
+            end
             settingsTable = Cell.isRetail
-                and {"enabled", "auras-picker", "thickness", "frameLevel:50"}
+                and {"enabled", "durationBarOptions", "auras-picker", "thickness", "frameLevel:50"}
                 or {"enabled", "checkbutton3:fadeOut", "auras-picker", "thickness", "frameLevel:50"}
         elseif indicatorType == "highlightDebuffs" then
             settingsTable = {"warning:"..(L["bossDebuffsApiWarning"] or ""), "enabled", "highlightDebuffFilters", midnightDurationVisibility, "animationStyle", "checkbutton5:showStack", CELL_RECTANGULAR_CUSTOM_INDICATOR_ICONS and "size" or "size-square", "num:3", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont}
@@ -2170,12 +2322,9 @@ local function ShowIndicatorSettings(id)
         end
 
         -- tips
-        --! only show "glow disabled" warning on Retail - Classic has glow working now
-        if indicatorType == "glow" and Cell.isRetail then
-            tinsert(settingsTable, 1, "warning:"..(L["glowDisabledApiWarning"] or ""))
-        else
-            tinsert(settingsTable, 1, "|cffb7b7b7"..L["The priority of spells decreases from top to bottom."].." "..L["Indicator settings are part of Layout settings which are account-wide."])
-        end
+        -- "glow disabled on Retail" warning removed: Retail Glow works again via the native
+        -- engine's own single-style glow (EngineGlow.lua).
+        tinsert(settingsTable, 1, "|cffb7b7b7"..L["The priority of spells decreases from top to bottom."].." "..L["Indicator settings are part of Layout settings which are account-wide."])
     end
 
     local widgets = Cell.CreateIndicatorSettings(settingsFrame.scrollFrame.content, settingsTable)
@@ -2194,7 +2343,8 @@ local function ShowIndicatorSettings(id)
 
         --! convert currentSetting to ACTUAL TABLE INDEX
         if currentSetting == "color-alpha" or currentSetting == "color-class" or currentSetting == "color-power" then currentSetting = "color" end
-        if currentSetting == "customColors" or currentSetting == "overlayColors" or currentSetting == "blockColors" or currentSetting == "rectColors" then currentSetting = "colors" end
+        if currentSetting == "customColors" or currentSetting == "overlayColors" or currentSetting == "blockColors" or currentSetting == "rectColors" or currentSetting == "colors-static" then currentSetting = "colors" end
+        if currentSetting == "duration-static" then currentSetting = "duration" end
         if currentSetting == "size-square" or currentSetting == "size-normal-big" then currentSetting = "size" end
         if currentSetting == "statusPosition" or currentSetting == "position-noHCenter" or currentSetting == "shieldBarPosition" then currentSetting = "position" end
         if currentSetting == "barOrientation" then currentSetting = "orientation" end
@@ -2480,6 +2630,27 @@ local function ShowIndicatorSettings(id)
             w:SetFunc(function(value)
                 Cell.Fire("UpdateIndicators", notifiedLayout, indicatorName, currentSetting, value)
             end)
+
+        -- durationBarOptions (Retail Border: durationBar + durationBarReverse + color, grouped)
+        elseif currentSetting == "durationBarOptions" then
+            if indicatorTable["color"] == nil then
+                indicatorTable["color"] = {1, 1, 1, 1}
+            end
+            w:SetDBValue(indicatorTable["durationBar"], indicatorTable["durationBarReverse"], indicatorTable["color"])
+            w:SetFunc(
+                function(value) -- durationBar
+                    indicatorTable["durationBar"] = value
+                    Cell.Fire("UpdateIndicators", notifiedLayout, indicatorName, "checkbutton", "durationBar", value)
+                end,
+                function(value) -- durationBarReverse
+                    indicatorTable["durationBarReverse"] = value
+                    Cell.Fire("UpdateIndicators", notifiedLayout, indicatorName, "checkbutton", "durationBarReverse", value)
+                end,
+                function(value) -- color
+                    indicatorTable["color"] = value
+                    Cell.Fire("UpdateIndicators", notifiedLayout, indicatorName, "color", value)
+                end
+            )
 
         elseif currentSetting == "size" and indicatorName == "debuffs" and Cell.isRetail then
             local size = indicatorTable["size"]
@@ -2865,6 +3036,15 @@ LoadIndicatorList = function()
         if i.isDispels then
             i.isVisible = true
             i.highlight:Show()
+            -- the frame border (separate toggle from the health-bar highlight above) was
+            -- never re-shown here, so it stayed invisible until the next 1s SetDispels
+            -- tick happened to redraw it -- show it immediately too, same as highlight.
+            if i._frameBorderEnabled and i.frameBorderTop then
+                i.frameBorderTop:Show()
+                i.frameBorderBottom:Show()
+                i.frameBorderLeft:Show()
+                i.frameBorderRight:Show()
+            end
         elseif i.isTargetedSpells then
             i:ShowGlowPreview()
         end
@@ -2927,6 +3107,12 @@ LoadIndicatorList = function()
         if i.isDispels then
             i.isVisible = false
             i.highlight:Hide()
+            if i.frameBorderTop then
+                i.frameBorderTop:Hide()
+                i.frameBorderBottom:Hide()
+                i.frameBorderLeft:Hide()
+                i.frameBorderRight:Hide()
+            end
         end
     end)
 end

@@ -42,6 +42,9 @@ select(2, ...).L = setmetatable({
     ["healthFadeTip"] = "Dims a unit's frame (using the Out of Range Alpha value) once their health rises above the threshold below, so healthy units fade into the background and hurt ones stand out.",
     ["Health Fade Threshold"] = "Health Fade Threshold",
     ["Color Duration Text Unavailable Tip"] = "This is unfortunately no longer possible since patch 12.0.0 due to Blizzard API restrictions.",
+    ["durationBar"] = "Duration Bar",
+    ["durationBarReverse"] = "Reversed",
+    ["highlightDebuffGlow"] = "Icon Glow",
     ["spellRequestRetailDisabledTip"] = "Disabled on Retail: enabling this currently triggers a Blizzard \"forbidden action\" error, likely due to stricter security rules since patch 12.0.0.",
     ["dispelRequestRetailDisabledTip"] = "Disabled on Retail: enabling this currently triggers a Blizzard \"forbidden action\" error, likely due to stricter security rules since patch 12.0.0.",
     ["shieldAbsorbClassicDisabledTip"] = "Heal Absorb, Shield and Overshield are greyed out on Classic / TBC because Blizzard doesn't expose the needed API there yet.",
@@ -158,6 +161,28 @@ select(2, ...).L = setmetatable({
     ["BACKUP_TIPS2"] = "Note for Classic players: Backups do not include Click-Castings and Layout Auto Switch of other characters",
     ["CHANGELOGS"] = [[
 
+
+        <h1>r277.9.8.6 - NeRgY</h1>
+        <h2>Retail</h2>
+        <p>* The custom "Border" indicator has a "Duration Bar" option, a colored bar sweeps across it to show remaining time.</p>
+        <p>* Fixed the custom "Bar", "Overlay", and "Text" indicators.</p>
+        <p>* The custom "Glow" indicator is back, but can only stay on for as long as the spell is active -- Blizzard no longer lets addons query a buff's remaining time.</p>
+        <p>* Added an "Icon Glow" checkbox to "Debuffs" and "Highlight Debuffs" (off by default).</p>
+        <p>* Fixed "Debuffs" icons overlapping/using the wrong size on profiles with an old orientation setting.</p>
+        <p>* Added "Show Debuffs on Pet Frames" and "Show Highlight Debuffs on Pet Frames" checkboxes under Layouts -> Pet (both on by default).</p>
+        <p>* Fixed your own pet's frame always showing as "out of range".</p>
+        <p>* Fixed Spotlight frames on a pseudo-unit (Target of Target, etc.) sometimes showing no indicators until an unrelated event refreshed them.</p>
+        <p>* Reworked Dispels' "Solid" highlight into "Scales with Health" and "Entire Health Bar", each with its own opacity slider, replacing the old fixed 50%/100% options.</p>
+        <p>* Dispels "Show Border Frame" and the custom "Border" indicator now wrap only the health bar, not the whole unit frame.</p>
+        <h2>Classic / TBC</h2>
+        <p>* Added "Show Debuffs on Pet Frames" and "Show Raid Debuffs on Pet Frames" checkboxes under Layouts -> Pet (both on by default).</p>
+        <p>* Fixed your own pet's frame always showing as "out of range".</p>
+        <p>* Fixed Spotlight frames on a pseudo-unit (Target of Target, etc.) sometimes showing no indicators until an unrelated event refreshed them.</p>
+        <p>* Reworked Dispels' "Solid" highlight into "Scales with Health" and "Entire Health Bar", each with its own opacity slider, replacing the old fixed 50%/100% options.</p>
+        <p>* Dispels "Show Border Frame" and the custom "Border" indicator now wrap only the health bar, not the whole unit frame.</p>
+        <p>* Fixed Raid Debuffs never recognizing Zul'Aman or Onyxia's Lair, and the Stockade under its Classic-era name ("Stormwind Stockade").</p>
+        <p>* Replaced all Burning Crusade Raid Debuffs spell data with a community-submitted, manually reviewed list. I'll look into this further over the next few days, and I'll do the same for Classic as well.</p>
+        <br/>
 
         <h1>r277.9.8.5 - NeRgY</h1>
         <h2>Retail</h2>

@@ -1876,6 +1876,54 @@ local function CreateSetting_PrivateAuraOrientation(parent)
     return widget
 end
 
+-- Retail-only: picks which of EngineGlow.lua's native-engine-safe glow styles to use.
+local function CreateSetting_GlowStyle(parent)
+    local widget
+
+    if not settingWidgets["glowStyle"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_GlowStyle", parent, 240, 50)
+        settingWidgets["glowStyle"] = widget
+
+        widget.dropdown = Cell.CreateDropdown(widget, 245)
+        widget.dropdown:SetPoint("TOPLEFT", 5, -20)
+        widget.dropdown:SetItems({
+            {
+                ["text"] = L["Pulse"],
+                ["value"] = "pulse",
+                ["onClick"] = function()
+                    widget.func("pulse")
+                end,
+            },
+            {
+                ["text"] = L["Flash"],
+                ["value"] = "flash",
+                ["onClick"] = function()
+                    widget.func("flash")
+                end,
+            },
+        })
+
+        widget.text = widget:CreateFontString(nil, "OVERLAY", font_name)
+        widget.text:SetText(L["Glow Style"])
+        widget.text:SetPoint("BOTTOMLEFT", widget.dropdown, "TOPLEFT", 0, 1)
+
+        -- callback
+        function widget:SetFunc(func)
+            widget.func = func
+        end
+
+        -- show db value
+        function widget:SetDBValue(style)
+            widget.dropdown:SetSelectedValue(style or "pulse")
+        end
+    else
+        widget = settingWidgets["glowStyle"]
+    end
+
+    widget:Show()
+    return widget
+end
+
 local function CreateSetting_BarOrientation(parent)
     local widget
 
@@ -1885,16 +1933,22 @@ local function CreateSetting_BarOrientation(parent)
 
         widget.orientation = Cell.CreateDropdown(widget, 245)
         widget.orientation:SetPoint("TOPLEFT", 5, -20)
+        -- Retail only: the native engine's HORIZONTAL fill direction (CustomAuraDisplay.lua) ends
+        -- up visually the opposite of Classic's legacy bar for the same orientation value --
+        -- rather than touch that rendering again, just swap which label goes with which value
+        -- here, so the text matches what Retail actually shows. The vertical pair (top-to-bottom/
+        -- bottom-to-top) already matched and is left alone. Classic's dropdown (and its own bar
+        -- rendering, Indicators/Base.lua) is untouched.
         widget.orientation:SetItems({
             {
-                ["text"] = L["left-to-right"],
+                ["text"] = Cell.isRetail and L["right-to-left"] or L["left-to-right"],
                 ["value"] = "left-to-right",
                 ["onClick"] = function()
                     widget.func("left-to-right")
                 end,
             },
             {
-                ["text"] = L["right-to-left"],
+                ["text"] = Cell.isRetail and L["left-to-right"] or L["right-to-left"],
                 ["value"] = "right-to-left",
                 ["onClick"] = function()
                     widget.func("right-to-left")
@@ -2379,6 +2433,92 @@ local function CreateSetting_ColorAlpha(parent)
         end
     else
         widget = settingWidgets["color-alpha"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+-- Retail-only trimmed "colors" widget: same colorsTable shape (Normal/[2]/[3]/Border/Background)
+-- as CreateSetting_Colors below, but leaves out the two "Remaining Time <" threshold rows
+-- entirely -- the native Retail engine can't safely read a live remaining-time value into Lua
+-- (it's a secret value there), so those two rows never had any real effect on Retail. Classic
+-- keeps the full widget (CreateSetting_Colors, untouched).
+local function CreateSetting_ColorsStatic(parent)
+    local widget
+
+    if not settingWidgets["colors-static"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_ColorsStatic", parent, 240, 26)
+        settingWidgets["colors-static"] = widget
+
+        local normalColor = Cell.CreateColorPicker(widget, L["Color"], true, function(r, g, b, a)
+            widget.colorsTable[1][1] = r
+            widget.colorsTable[1][2] = g
+            widget.colorsTable[1][3] = b
+            widget.colorsTable[1][4] = a
+            widget.func(widget.colorsTable)
+        end)
+        normalColor:SetPoint("TOPLEFT", 5, -8)
+
+        local borderColor = Cell.CreateColorPicker(widget, L["Border Color"], true, function(r, g, b, a)
+            widget.colorsTable[4][1] = r
+            widget.colorsTable[4][2] = g
+            widget.colorsTable[4][3] = b
+            widget.colorsTable[4][4] = a
+            widget.func(widget.colorsTable)
+        end)
+        borderColor:SetPoint("TOPLEFT", normalColor, "BOTTOMLEFT", 0, -8)
+
+        local bgColor = Cell.CreateColorPicker(widget, L["Background Color"], true, function(r, g, b, a)
+            widget.colorsTable[5][1] = r
+            widget.colorsTable[5][2] = g
+            widget.colorsTable[5][3] = b
+            widget.colorsTable[5][4] = a
+            widget.func(widget.colorsTable)
+        end)
+        bgColor:SetPoint("TOPLEFT", borderColor, "BOTTOMLEFT", 0, -8)
+
+        -- callback
+        function widget:SetFunc(func)
+            widget.func = func
+        end
+
+        -- show db value
+        function widget:SetDBValue(colorsTable)
+            widget.colorsTable = colorsTable
+            normalColor:SetColor(colorsTable[1])
+
+            -- Self-heal old data: a profile that had "Remaining Time <" thresholds enabled
+            -- before this trimmed widget existed would otherwise keep applying them invisibly
+            -- (both on the real Retail frame -- if it ever gets threshold support later -- and,
+            -- right now, in the settings-panel preview, which reads this same colorsTable via
+            -- the legacy Bar_OnUpdate simulator and doesn't know these rows were removed here).
+            if colorsTable[2] and colorsTable[2][1] then
+                colorsTable[2][1] = false
+            end
+            if colorsTable[3] and colorsTable[3][1] then
+                colorsTable[3][1] = false
+            end
+
+            if colorsTable[4] and colorsTable[5] then
+                P.Height(widget, 82)
+                borderColor:SetColor(colorsTable[4])
+                borderColor:Show()
+                bgColor:SetColor(colorsTable[5])
+                bgColor:Show()
+            elseif colorsTable[4] then
+                P.Height(widget, 54)
+                borderColor:SetColor(colorsTable[4])
+                borderColor:Show()
+                bgColor:Hide()
+            else
+                P.Height(widget, 26)
+                borderColor:Hide()
+                bgColor:Hide()
+            end
+        end
+    else
+        widget = settingWidgets["colors-static"]
     end
 
     widget:Show()
@@ -3711,6 +3851,97 @@ local function CreateSetting_CheckButton6(parent)
         end
     else
         widget = settingWidgets["checkbutton6"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+-- Duration Bar (enable + reversed + color), grouped in one boxed widget so it's clear
+-- the three settings belong together.
+local function CreateSetting_DurationBarOptions(parent)
+    local widget
+
+    if not settingWidgets["durationBarOptions"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_DurationBarOptions", parent, 240, 82)
+        settingWidgets["durationBarOptions"] = widget
+
+        local enableCB = Cell.CreateCheckButton(widget, L["durationBar"], function(checked)
+            Cell.SetEnabled(checked, widget.reverseCB, widget.colorPicker)
+            if widget.onDurationBar then widget.onDurationBar(checked) end
+        end)
+        enableCB:SetPoint("TOPLEFT", 5, -8)
+        widget.enableCB = enableCB
+
+        local reverseCB = Cell.CreateCheckButton(widget, L["durationBarReverse"], function(checked)
+            if widget.onDurationBarReverse then widget.onDurationBarReverse(checked) end
+        end)
+        reverseCB:SetPoint("TOPLEFT", enableCB, "BOTTOMLEFT", 18, -8)
+        widget.reverseCB = reverseCB
+
+        local colorPicker = Cell.CreateColorPicker(widget, L["Color"], true, function(r, g, b, a)
+            widget.colorTable[1] = r
+            widget.colorTable[2] = g
+            widget.colorTable[3] = b
+            widget.colorTable[4] = a
+            if widget.onColor then widget.onColor(widget.colorTable) end
+        end)
+        colorPicker:SetPoint("TOPLEFT", reverseCB, "BOTTOMLEFT", -18, -8)
+        widget.colorPicker = colorPicker
+
+        -- callbacks
+        function widget:SetFunc(onDurationBar, onDurationBarReverse, onColor)
+            widget.onDurationBar = onDurationBar
+            widget.onDurationBarReverse = onDurationBarReverse
+            widget.onColor = onColor
+        end
+
+        -- show db values
+        function widget:SetDBValue(durationBar, durationBarReverse, colorTable)
+            enableCB:SetChecked(durationBar)
+            reverseCB:SetChecked(durationBarReverse)
+            widget.colorTable = colorTable
+            colorPicker:SetColor(colorTable)
+            Cell.SetEnabled(durationBar, reverseCB, colorPicker)
+        end
+    else
+        widget = settingWidgets["durationBarOptions"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+-- Retail-only trimmed "duration" widget: just the enable checkbox. "Round Up Duration Text"
+-- and "Display One Decimal Place When Remaining Time <" never worked on the native Retail
+-- engine -- its duration text formatter (F.GetAuraDurationFormatter, Utils.lua) is a single
+-- fixed, cached formatter that takes no per-indicator settings at all, so durationTbl[2]/[3]
+-- were silently ignored. Classic keeps the full widget (CreateSetting_Duration, untouched).
+local function CreateSetting_DurationStatic(parent)
+    local widget
+
+    if not settingWidgets["duration-static"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_DurationStatic", parent, 240, 30)
+        settingWidgets["duration-static"] = widget
+
+        widget.durationCB = Cell.CreateCheckButton(widget, L["showDuration"], function(checked)
+            widget.durationTbl[1] = checked
+            widget.func(widget.durationTbl)
+        end)
+        widget.durationCB:SetPoint("TOPLEFT", 5, -8)
+
+        -- callback
+        function widget:SetFunc(func)
+            widget.func = func
+        end
+
+        -- show db value
+        function widget:SetDBValue(durationTbl)
+            widget.durationTbl = durationTbl
+            widget.durationCB:SetChecked(durationTbl[1])
+        end
+    else
+        widget = settingWidgets["duration-static"]
     end
 
     widget:Show()
@@ -6295,8 +6526,22 @@ local function CreateSetting_HighlightType(parent)
 
     if not settingWidgets["highlightType"] then
         widget = Cell.CreateFrame("CellIndicatorSettings_HighlightType", parent, 240, 50)
-        -- widget = Cell.CreateFrame("CellIndicatorSettings_HighlightType", parent, 240, 117)
         settingWidgets["highlightType"] = widget
+
+        -- Only "fill" (tied to the health bar's current fill, like the border-color
+        -- overlay elsewhere) and "full" (the whole health bar frame, ignoring current
+        -- health) carry an opacity slider -- the edge fade textures already have their
+        -- own baked-in fade, an opacity slider on top of those wouldn't do much.
+        local function UpdateOpacityVisibility(highlightType)
+            if highlightType == "fill" or highlightType == "full" then
+                widget.opacity:Show()
+                widget:SetHeight(95)
+            else
+                widget.opacity:Hide()
+                widget:SetHeight(50)
+            end
+            Cell.UpdateIndicatorSettingsHeight()
+        end
 
         widget.highlightType = Cell.CreateDropdown(widget, 245)
         widget.highlightType:SetPoint("TOPLEFT", 5, -20)
@@ -6305,35 +6550,40 @@ local function CreateSetting_HighlightType(parent)
                 ["text"] = L["None"],
                 ["value"] = "none",
                 ["onClick"] = function()
-                    widget.func("none")
+                    UpdateOpacityVisibility("none")
+                    widget.func({"none"})
                 end,
             },
             {
-                ["text"] = L["Solid"].." - "..L["Health Bar"].." (50%)",
-                ["value"] = "entire",
+                ["text"] = L["Solid"].." - "..L["Scales with Health"],
+                ["value"] = "fill",
                 ["onClick"] = function()
-                    widget.func("entire")
+                    UpdateOpacityVisibility("fill")
+                    widget.func({"fill", widget.opacity:GetValue()})
                 end,
             },
             {
-                ["text"] = L["Solid"].." - "..L["Health Bar"].." (100%)",
-                ["value"] = "entire-solid",
+                ["text"] = L["Solid"].." - "..L["Entire Health Bar"],
+                ["value"] = "full",
                 ["onClick"] = function()
-                    widget.func("entire-solid")
+                    UpdateOpacityVisibility("full")
+                    widget.func({"full", widget.opacity:GetValue()})
                 end,
             },
             {
                 ["text"] = L["Edge Fade"].." ("..L["TOP"]..")",
                 ["value"] = "edge-top",
                 ["onClick"] = function()
-                    widget.func("edge-top")
+                    UpdateOpacityVisibility("edge-top")
+                    widget.func({"edge-top"})
                 end,
             },
             {
                 ["text"] = L["Edge Fade"].." ("..L["BOTTOM"]..")",
                 ["value"] = "edge-bottom",
                 ["onClick"] = function()
-                    widget.func("edge-bottom")
+                    UpdateOpacityVisibility("edge-bottom")
+                    widget.func({"edge-bottom"})
                 end,
             },
         })
@@ -6341,6 +6591,17 @@ local function CreateSetting_HighlightType(parent)
         widget.highlightTypeText = widget:CreateFontString(nil, "OVERLAY", font_name)
         widget.highlightTypeText:SetText(L["Highlight Type"])
         widget.highlightTypeText:SetPoint("BOTTOMLEFT", widget.highlightType, "TOPLEFT", 0, 1)
+
+        widget.opacity = Cell.CreateSlider(L["Opacity"], widget, 0, 100, 235, 1, nil, nil, true)
+        widget.opacity:SetPoint("TOPLEFT", widget.highlightType, "BOTTOMLEFT", 0, -25)
+        -- afterValueChangedFn (commits once, on release), not onValueChangedFn (fires on
+        -- every tick while dragging) -- this setting routes through a full raid-wide
+        -- native-engine container rebuild (RebuildAllCombatAuraDisplays), same reason
+        -- every other slider in this settings panel (position, size, frame level, ...)
+        -- commits on release instead of live-updating every pixel of drag.
+        widget.opacity.afterValueChangedFn = function(value)
+            widget.func({widget.highlightType:GetSelected(), value})
+        end
 
         --[[
         -- curse
@@ -6390,13 +6651,35 @@ local function CreateSetting_HighlightType(parent)
         end
 
         -- show db value
-        function widget:SetDBValue(highlightType)
+        -- value is {highlightType, opacity} -- opacity only meaningful for fill/full.
+        -- Also accepts a bare legacy string (old profiles, pre-opacity-slider):
+        -- "entire"/"entire-solid" become fill/full at their old fixed opacity,
+        -- "gradient-sharp" folds into "edge-bottom" like it always has.
+        function widget:SetDBValue(value)
+            local highlightType, opacity
+            if type(value) == "table" then
+                highlightType, opacity = value[1], value[2]
+            else
+                highlightType = value
+            end
             if highlightType == "gradient-sharp" then
                 highlightType = "edge-bottom"
-            elseif highlightType ~= "edge-top" and highlightType ~= "edge-bottom" and highlightType ~= "none" and highlightType ~= "entire-solid" then
-                highlightType = "entire"
+            elseif highlightType == "entire" then
+                highlightType, opacity = "fill", opacity or 50
+            elseif highlightType == "entire-solid" then
+                highlightType, opacity = "full", opacity or 100
+            elseif highlightType ~= "edge-top" and highlightType ~= "edge-bottom" and highlightType ~= "none" and highlightType ~= "fill" and highlightType ~= "full" then
+                highlightType, opacity = "fill", opacity or 50
             end
             widget.highlightType:SetSelectedValue(highlightType)
+            if highlightType == "fill" or highlightType == "full" then
+                widget.opacity:SetValue(opacity or 50)
+                widget.opacity:Show()
+                widget:SetHeight(95)
+            else
+                widget.opacity:Hide()
+                widget:SetHeight(50)
+            end
         end
     else
         widget = settingWidgets["highlightType"]
@@ -8255,10 +8538,13 @@ local builders = {
     ["durationVisibilitySimple"] = CreateSetting_DurationVisibilitySimple,
     ["orientation"] = CreateSetting_Orientation,
     ["barOrientation"] = CreateSetting_BarOrientation,
+    ["glowStyle"] = CreateSetting_GlowStyle,
     ["font-noOffset"] = CreateSetting_FontNoOffset,
     ["color"] = CreateSetting_Color,
     ["color-alpha"] = CreateSetting_ColorAlpha,
+    ["durationBarOptions"] = CreateSetting_DurationBarOptions,
     ["colors"] = CreateSetting_Colors,
+    ["colors-static"] = CreateSetting_ColorsStatic,
     ["blockColors"] = CreateSetting_BlockColors,
     ["rectColors"] = CreateSetting_RectColors,
     ["overlayColors"] = CreateSetting_OverlayColors,
@@ -8267,6 +8553,7 @@ local builders = {
     ["color-power"] = CreateSetting_PowerColor,
     ["statusColors"] = CreateSetting_StatusColors,
     ["duration"] = CreateSetting_Duration,
+    ["duration-static"] = CreateSetting_DurationStatic,
     ["stack"] = CreateSetting_Stack,
     ["roleTexture"] = CreateSetting_RoleTexture,
     ["glow"] = CreateSetting_Glow,

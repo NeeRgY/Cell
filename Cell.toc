@@ -1,6 +1,6 @@
 ## Interface: 120100
 ## Title: Cell
-## Version: r277.9.8.5
+## Version: r277.9.8.6
 ## Author: enderneko, Krysio, NeRgY
 ## X-Flavor: Mainline
 ## SavedVariables: CellDB, CellDBBackup
@@ -66,6 +66,7 @@ Indicators\Custom.lua
 Indicators\Supporter.lua
 
 RaidFrames\HealersAuraDisplay.lua
+RaidFrames\EngineGlow.lua
 RaidFrames\CustomAuraDisplay.lua
 RaidFrames\CombatAuraDisplay.lua
 RaidFrames\MainFrame.lua

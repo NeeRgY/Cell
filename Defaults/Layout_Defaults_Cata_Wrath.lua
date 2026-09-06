@@ -64,6 +64,8 @@ Cell.defaults.layout = {
         ["anchor"] = "TOPLEFT",
         ["spacingX"] = 3,
         ["spacingY"] = 3,
+        ["showDebuffs"] = true,
+        ["showRaidDebuffs"] = true,
     },
     ["npc"] = {
         ["enabled"] = true,

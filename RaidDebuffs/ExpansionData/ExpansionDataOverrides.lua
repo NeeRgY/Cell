@@ -37,6 +37,17 @@ Cell_ExpansionDataOverrides = {
 if Cell.isTBC or Cell.isVanilla then
     Cell_ExpansionDataOverrides[559] = {from = "Warlords of Draenor", to = "Classic"} -- UBRS
     Cell_ExpansionDataOverrides[229] = {from = "Classic", to = "Classic"} -- LBRS
+    -- Zul'Aman only exists in the base data under its Cataclysm 5-man revamp, so it never
+    -- showed up as a Burning Crusade raid at all. The boss roster carries over unchanged --
+    -- named explicitly since a move here otherwise wipes the boss list (see the loop below).
+    Cell_ExpansionDataOverrides[77] = {
+        from = "Cataclysm", to = "Burning Crusade",
+        bosses = {"Akil'zon", "Nalorakk", "Jan'alai", "Halazzi", "Hex Lord Malacrass", "Zul'jin"},
+    }
+    -- Onyxia's Lair only exists in the base data under its Cataclysm 10/25-man revamp
+    -- (filed as "Wrath of the Lich King" upstream), so the original Classic raid never
+    -- showed up either.
+    Cell_ExpansionDataOverrides[760] = {from = "Wrath of the Lich King", to = "Classic", bosses = {"Onyxia"}} -- Onyxia's Lair
 end
 
 -------------------------------------------------

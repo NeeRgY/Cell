@@ -321,7 +321,7 @@ local function HandleIndicators(b)
             end
         end
         -- update color
-        if t["color"] and t["indicatorName"] ~= "nameText" and t["indicatorName"] ~="powerText" then
+        if t["color"] and t["indicatorName"] ~= "nameText" and t["indicatorName"] ~="powerText" and indicator.SetColor then
             indicator:SetColor(unpack(t["color"]))
         end
         -- update colors
@@ -866,8 +866,7 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
             else
                 F.IterateAllUnitButtons(function(b)
                     local indicator = BD(b).indicators[indicatorName]
-                    if not indicator then return end
-                if not indicator then return end
+                    if not indicator or not indicator.SetColor then return end
                     indicator:SetColor(unpack(value))
                 end, true)
             end
@@ -1156,7 +1155,7 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
                     indicator:SetFont(unpack(value["font"]))
                 end
                 -- update color
-                if value["color"] then
+                if value["color"] and indicator.SetColor then
                     indicator:SetColor(unpack(value["color"]))
                 end
                 -- update colors
@@ -1357,7 +1356,10 @@ local function UnitButton_UpdateDebuffs(self)
     end
 
     -- update raid debuffs
-    if raidDebuffsFound then
+    -- "Show Raid Debuffs on Pet Frames" (Layouts -> Pet, labeled per-flavor): pet
+    -- unit buttons are flagged by PetFrame.lua (self.isGroupPet).
+    if raidDebuffsFound and not (self.isGroupPet
+        and Cell.vars.currentLayoutTable["pet"]["showRaidDebuffs"] == false) then
         startIndex = 1
         BD(self).indicators.raidDebuffs:Show()
 
@@ -1429,7 +1431,12 @@ local function UnitButton_UpdateDebuffs(self)
 
     -- update debuffs
     startIndex = 1
-    if enabledIndicators["debuffs"] then
+    -- "Show Debuffs on Pet Frames" (Layouts -> Pet): pet unit buttons are flagged by
+    -- PetFrame.lua (self.isGroupPet). When off, skip populating this indicator for
+    -- them the same way disabling it does -- startIndex stays 1, so the UpdateSize
+    -- call below hides all of the indicator's icons.
+    if enabledIndicators["debuffs"] and not (self.isGroupPet
+        and Cell.vars.currentLayoutTable["pet"]["showDebuffs"] == false) then
         -- bigDebuffs first
         for debuffIndex, refreshing in pairs(BD(self)._debuffs_big) do
             local name, icon, count, debuffType, duration, expirationTime, _, _, _, spellId = UnitDebuff(unit, debuffIndex)
@@ -2767,6 +2774,20 @@ local function UnitButton_OnShow(self)
     BD(self)._updateRequired = 1
     BD(self)._powerUpdateRequired = 1
     if Cell.loaded and Cell.vars.currentLayoutTable and BD(self)._waitingForIndicatorCreation then
+        AddToInitQueue(self)
+        if not updater:IsShown() then
+            updater:Show()
+        end
+    elseif Cell.loaded and Cell.vars.currentLayoutTable and BD(self)._status == nil and not BD(self)._indicatorsReady then
+        -- Self-heal: this button already went through its first indicator init at
+        -- some point (_waitingForIndicatorCreation is long gone), but was hidden
+        -- during a later re-init/update sweep -- e.g. a Spotlight frame on a
+        -- pseudo-unit like "targettarget"/"focustarget"/"boss1target" that didn't
+        -- exist yet -- and so never got _indicatorsReady back. Health/name still
+        -- refresh regardless (that runs unconditionally), but
+        -- UnitButton_UpdateAuras silently no-ops forever on !_indicatorsReady, so
+        -- indicators would otherwise stay blank until an unrelated event (spec
+        -- change, group type switch) happens to trigger another full sweep.
         AddToInitQueue(self)
         if not updater:IsShown() then
             updater:Show()

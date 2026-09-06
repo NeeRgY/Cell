@@ -574,7 +574,7 @@ local function HandleIndicators(b)
             end
         end
         -- update color
-        if t["color"] and t["indicatorName"] ~= "nameText" and t["indicatorName"] ~="powerText" then
+        if t["color"] and t["indicatorName"] ~= "nameText" and t["indicatorName"] ~="powerText" and indicator.SetColor then
             indicator:SetColor(unpack(t["color"]))
         end
         -- update colors
@@ -823,6 +823,25 @@ local function AddToUpdateQueue(b)
     BD(b)._indicatorsReady = nil
     BD(b)._status = WAITING_FOR_UPDATE
     queue[b] = true
+end
+
+-- Bridged to the later (function(Cell)...end)(Cell) block via Cell._... below --
+-- this file is split into several of those to stay under Lua's 200-local cap
+-- per function, so a plain upvalue reference from UnitButton_OnShow (which
+-- lives in a later block) can't reach AddToInitQueue/updater/queue here at all;
+-- it would silently resolve to a global (nil) instead of erroring at load time.
+local function EnsureIndicatorsReadyOnShow(b)
+    -- Cell.vars.currentLayoutTable isn't set up yet during initial addon load
+    -- (buttons show themselves as they're first created, well before that) --
+    -- AddToInitQueue reads it unconditionally, so skip until Cell is actually
+    -- loaded. Brand-new buttons are already handled separately via
+    -- _waitingForIndicatorCreation once loading finishes; this is purely the
+    -- later "was hidden, missed a real sweep" case.
+    if not (Cell.loaded and Cell.vars.currentLayoutTable) then return end
+    if BD(b)._status == nil and not BD(b)._indicatorsReady then
+        AddToInitQueue(b)
+        updater:Show()
+    end
 end
 
 -------------------------------------------------
@@ -1186,7 +1205,9 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
             else
                 F.IterateAllUnitButtons(function(b)
                     local indicator = BD(b).indicators[indicatorName]
-                    indicator:SetColor(unpack(value))
+                    if indicator.SetColor then
+                        indicator:SetColor(unpack(value))
+                    end
                 end, true)
             end
         elseif setting == "colors" then
@@ -1240,11 +1261,8 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
                 UnitButton_UpdateAuras(b)
             end, true)
         elseif setting == "highlightType" then
-            if value == "gradient-sharp" then
-                value = "edge-bottom"
-            elseif value ~= "edge-top" and value ~= "edge-bottom" then
-                value = "entire"
-            end
+            -- value is {highlightType, opacity} (or a bare legacy string) --
+            -- Dispels_UpdateHighlight (Indicators/Built-in.lua) normalizes both.
             F.IterateAllUnitButtons(function(b)
                 BD(b).indicators[indicatorName]:UpdateHighlight(value)
                 UnitButton_UpdateAuras(b)
@@ -1463,7 +1481,7 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
                     indicator:SetFont(unpack(value["font"]))
                 end
                 -- update color
-                if value["color"] then
+                if value["color"] and indicator.SetColor then
                     indicator:SetColor(unpack(value["color"]))
                 end
                 -- update colors
@@ -1864,7 +1882,10 @@ local function UnitButton_UpdateDebuffs(self, isFullUpdate)
     -- update raid debuffs
     -- if BD(self)._debuffs.raidDebuffsFound or cleuUnits[unit] then
     if not (I.ShouldSkipLegacyCombatAura and I.ShouldSkipLegacyCombatAura("raidDebuffs", self)) then
-    if BD(self)._debuffs_raid[1] then
+    -- "Show Highlight Debuffs on Pet Frames" (Layouts -> Pet): pet unit buttons
+    -- are flagged by PetFrame.lua (self.isGroupPet).
+    if BD(self)._debuffs_raid[1] and not (self.isGroupPet
+        and Cell.vars.currentLayoutTable["pet"]["showRaidDebuffs"] == false) then
         BD(self).indicators.raidDebuffs:Show()
 
         -- cleuAuras
@@ -1972,7 +1993,12 @@ local function UnitButton_UpdateDebuffs(self, isFullUpdate)
 
     -- update debuffs
     startIndex = 1
-    if enabledIndicators["debuffs"] then
+    -- "Show Debuffs on Pet Frames" (Layouts -> Pet): pet unit buttons are flagged by
+    -- PetFrame.lua (self.isGroupPet). When off, skip populating this indicator for
+    -- them the same way disabling it does -- startIndex stays 1, so the UpdateSize
+    -- call below hides all of the indicator's icons.
+    if enabledIndicators["debuffs"] and not (self.isGroupPet
+        and Cell.vars.currentLayoutTable["pet"]["showDebuffs"] == false) then
         -- helper to display a debuff indicator
         local function showDebuff(auraInstanceID, auraInfo, isBig)
             if Cell.isMidnight then
@@ -2090,7 +2116,7 @@ local function UnitButton_UpdateDebuffs(self, isFullUpdate)
                 elseif ht ~= "none" then
                     dispels.highlight:SetTexture(Cell.vars.whiteTexture)
                     dispels.highlight:SetTexCoord(0, 1, 0, 1)
-                    dispels.highlight:SetVertexColor(cr, cg, cb, ht == "entire-solid" and 1 or 0.5)
+                    dispels.highlight:SetVertexColor(cr, cg, cb, dispels.highlightOpacity or 0.5)
                     dispels.highlight:Show()
                 end
 
@@ -2150,6 +2176,7 @@ Cell._getAuraDataByAuraInstanceID = GetAuraDataByAuraInstanceID
 Cell._annotateAura = AnnotateAura
 Cell._doesAuraMatchExpectedBuff = DoesAuraMatchExpectedBuff
 Cell._updateAuraRefreshState = UpdateAuraRefreshState
+Cell._ensureIndicatorsReadyOnShow = EnsureIndicatorsReadyOnShow
 
 end)(Cell)
 
@@ -3904,6 +3931,20 @@ function UnitButton_UpdateInRange(self, ir)
     local unit = BD(self).states.displayedUnit
     if not unit then return end
 
+    -- Your own pet is never range-faded (see F.IsInRange) -- bypass the raw/secret
+    -- UnitInRange fast path below too, since that one feeds Blizzard's raw result
+    -- straight to SetAlphaFromBoolean without ever calling F.IsInRange at all.
+    if F.IsKnownTrue(UnitIsUnit(unit, "pet")) then
+        if BD(self).states.inRange ~= true then
+            BD(self).states.inRange = true
+            BD(self).states.wasInRange = true
+            if Cell.loaded then
+                A.FrameFadeIn(self, 0.25, SafeCurrentAlpha(self, CellDB["appearance"]["outOfRangeAlpha"]), 1)
+            end
+        end
+        return
+    end
+
     -- Midnight: UnitInRange can return a secret boolean in restricted content.
     -- Hand it straight to SetAlphaFromBoolean instead of resolving it first.
     if Cell.isMidnight and issecretvalue and self.SetAlphaFromBoolean
@@ -4305,6 +4346,7 @@ local LGI = LibStub:GetLibrary("LibGroupInfo")
 
 local InitAuraTables = Cell_._initAuraTables
 local ResetAuraTables = Cell_._resetAuraTables
+local EnsureIndicatorsReadyOnShow = Cell_._ensureIndicatorsReadyOnShow
 local HidePowerBar = Cell_._hidePowerBar
 local ShowPowerBar = Cell_._showPowerBar
 local UnitButton_UpdateCombatIcon = Cell_._updateCombatIcon
@@ -5081,6 +5123,19 @@ Cell.vars.names = {} -- name to unitid
 
 local function UnitButton_OnShow(self)
     -- print(GetTime(), "OnShow", self:GetName())
+
+    -- Self-heal a button that was still hidden during the last full indicator
+    -- init/update sweep (e.g. a Spotlight frame on a pseudo-unit like
+    -- "targettarget"/"focustarget"/"boss1target" that didn't exist at that
+    -- moment) and so never got _indicatorsReady set. Without this, the button
+    -- keeps refreshing health/name forever (that runs unconditionally) while
+    -- UnitButton_UpdateAuras silently no-ops every single call, since it bails
+    -- out on !_indicatorsReady -- indicators on it never appear until some
+    -- unrelated event (spec change, group type switch) happens to trigger
+    -- another full sweep. Queueing it here catches it the moment it's actually
+    -- shown instead of waiting on that coincidence.
+    EnsureIndicatorsReadyOnShow(self)
+
     BD(self)._updateRequired = nil -- prevent UnitButton_UpdateAll twice. when convert party <-> raid, GROUP_ROSTER_UPDATE fired.
     BD(self)._powerUpdateRequired = 1
     UnitButton_RegisterEvents(self)

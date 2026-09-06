@@ -10,6 +10,7 @@ local SUPPORTED_TYPES = {
     icon = true, icons = true, color = true, border = true,
     text = true, bar = true, bars = true, rect = true,
     texture = true, overlay = true, block = true, blocks = true,
+    glow = true,
 }
 
 local HARD_EXCLUDE_SPELLS = {
@@ -54,7 +55,7 @@ local function ProbeSupported()
 end
 
 local function IsOverlayType(cfgType)
-    return cfgType == "color" or cfgType == "border" or cfgType == "overlay"
+    return cfgType == "color" or cfgType == "border" or cfgType == "overlay" or cfgType == "glow"
 end
 
 local function IsSingleSlot(cfgType)
@@ -417,10 +418,21 @@ local function AttachDurationBar(button, orientation, r, g, b, a, bgr, bgg, bgb,
     bar:EnableMouse(false)
     if orientation == "vertical" or orientation == "top-to-bottom" or orientation == "bottom-to-top" then
         bar:SetOrientation("VERTICAL")
+        -- SetOrientation alone only changes which edge grows -- without this, the fill texture
+        -- stays oriented for a horizontal bar and a vertical one renders wrong/invisible.
+        if bar.SetRotatesTexture then
+            bar:SetRotatesTexture(true)
+        end
     else
         bar:SetOrientation("HORIZONTAL")
+        if bar.SetRotatesTexture then
+            bar:SetRotatesTexture(false)
+        end
     end
-    bar:SetReverseFill(orientation ~= "right-to-left" and orientation ~= "bottom-to-top")
+    -- matches the legacy preview bar's convention (Indicators/Base.lua, bar:SetOrientation) --
+    -- this used to be the inverted condition, which made every direction (and the settings-panel
+    -- preview, which uses that legacy bar) run backwards from what was selected.
+    bar:SetReverseFill(orientation == "right-to-left" or orientation == "bottom-to-top")
     bar:SetStatusBarTexture(Cell.vars.whiteTexture or Cell.vars.texture)
     local bg = bar:CreateTexture(nil, "BACKGROUND")
     bg:SetAllPoints(bar)
@@ -662,12 +674,16 @@ local function MakeInitBorderButton(cfg, unitButton)
         local texMap, firstColor = BuildTextureColorMap(cfg.auras)
         local r, g, b, a = GetBorderColor(cfg)
 
+        -- Anchored to the health bar, not the whole unit frame, so it doesn't wrap
+        -- the power bar too (same reasoning as the Dispels border/overlay fix).
+        local anchorFrame = (F.BD(unitButton).widgets and F.BD(unitButton).widgets.healthBar) or unitButton
+
         local tex = button:CreateTexture(nil, "ARTWORK", nil, 3)
         tex:SetTexture(Cell.vars.whiteTexture)
         tex:SetVertexColor(r, g, b, a)
         tex:ClearAllPoints()
-        tex:SetPoint("TOPLEFT", unitButton, "TOPLEFT", inset, -inset)
-        tex:SetPoint("BOTTOMRIGHT", unitButton, "BOTTOMRIGHT", -inset, inset)
+        tex:SetPoint("TOPLEFT", anchorFrame, "TOPLEFT", inset, -inset)
+        tex:SetPoint("BOTTOMRIGHT", anchorFrame, "BOTTOMRIGHT", -inset, inset)
 
         -- recolor to match whichever aura is actually showing, like bar/block do
         HookIconColor(ResolveIconTexture(button, icon), texMap, firstColor or { r, g, b, a }, function(color)
@@ -685,8 +701,8 @@ local function MakeInitBorderButton(cfg, unitButton)
         local tex2 = button:CreateTexture(nil, "ARTWORK", nil, 2)
         tex2:SetColorTexture(0, 0, 0, 1)
         tex2:ClearAllPoints()
-        tex2:SetPoint("TOPLEFT", unitButton, "TOPLEFT", inset, -inset)
-        tex2:SetPoint("BOTTOMRIGHT", unitButton, "BOTTOMRIGHT", -inset, inset)
+        tex2:SetPoint("TOPLEFT", anchorFrame, "TOPLEFT", inset, -inset)
+        tex2:SetPoint("BOTTOMRIGHT", anchorFrame, "BOTTOMRIGHT", -inset, inset)
 
         local mask2 = button:CreateMaskTexture()
         mask2:SetTexture(Cell.vars.emptyTexture, "CLAMPTOWHITE", "CLAMPTOWHITE")
@@ -695,11 +711,26 @@ local function MakeInitBorderButton(cfg, unitButton)
         mask2:SetPoint("BOTTOMRIGHT", tex2, "BOTTOMRIGHT", -(thickness + inset), thickness + inset)
         tex2:AddMaskTexture(mask2)
 
-        -- "Fade out over time" is not supported here (Classic-only, via the legacy Border indicator
-        -- in Indicators/Base.lua) -- the OnUpdate ticker this needed caused a rebuild-loop freeze on
-        -- the native engine for reasons never fully pinned down, so it was removed entirely rather
-        -- than left half-working. cfg.fadeOut is intentionally ignored below, even for anyone with
-        -- it still saved true from before -- the border just always renders at full alpha.
+        -- "Fade out over time" (uniform alpha fade) was tried twice and never worked reliably --
+        -- see the UpdateIndicators callback below for why cfg.fadeOut is ignored here.
+        --
+        -- Duration Bar: a colored bar that sweeps across the border, using the plain
+        -- SetDurationBar fill (confirmed working -- no color/alpha curve needed at all, just a
+        -- constant SetStatusBarColor).
+        if cfg.durationBar then
+            local durationBar = CreateFrame("StatusBar", nil, button)
+            durationBar:SetAllPoints(tex)
+            durationBar:EnableMouse(false)
+            durationBar:SetStatusBarTexture(Cell.vars.whiteTexture)
+            durationBar:SetReverseFill(cfg.durationBarReverse == true)
+            local c = cfg.color or { 1, 1, 1, 1 }
+            durationBar:SetStatusBarColor(c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1)
+            local barTex = durationBar:GetStatusBarTexture()
+            if barTex then
+                barTex:AddMaskTexture(mask)
+            end
+            pcall(button.SetDurationBar, button, durationBar, DurationBarOpts(true))
+        end
 
         local host = F.BD(unitButton).widgets and F.BD(unitButton).widgets.highLevelFrame or unitButton
         local base = (host.GetFrameLevel and host:GetFrameLevel())
@@ -896,10 +927,22 @@ local function MakeInitOverlayButton(cfg, unitButton)
         local orientation = ResolveBarOrientation(cfg.orientation)
         if orientation == "top-to-bottom" or orientation == "bottom-to-top" then
             bar:SetOrientation("VERTICAL")
+            -- SetOrientation alone only changes which edge grows -- without this, the fill
+            -- texture stays oriented for a horizontal bar and a vertical one renders wrong.
+            if bar.SetRotatesTexture then
+                bar:SetRotatesTexture(true)
+            end
         else
             bar:SetOrientation("HORIZONTAL")
+            if bar.SetRotatesTexture then
+                bar:SetRotatesTexture(false)
+            end
         end
-        bar:SetReverseFill(orientation ~= "right-to-left" and orientation ~= "bottom-to-top")
+        -- matches the legacy preview bar's convention (Indicators/Base.lua, bar:SetOrientation) --
+        -- this used to be the inverted condition, which made every direction (and the
+        -- settings-panel preview, which uses that legacy bar) run backwards from what was
+        -- selected.
+        bar:SetReverseFill(orientation == "right-to-left" or orientation == "bottom-to-top")
         local barTex = bar:GetStatusBarTexture()
         if barTex then
             barTex:SetVertexColor(r, g, b, a)
@@ -908,6 +951,31 @@ local function MakeInitOverlayButton(cfg, unitButton)
         local base = (parent.GetFrameLevel and parent:GetFrameLevel()) or 1
         pcall(bar.SetFrameLevel, bar, base + (cfg.frameLevel or 1) + 55)
         pcall(button.SetDurationBar, button, bar, DurationBarOpts(true))
+    end
+end
+
+local function MakeInitGlowButton(cfg, unitButton)
+    return function(button)
+        pcall(button.SetSize, button, 0.001, 0.001)
+        F.SetupEngineAuraButtonMouse(button, true)
+        AttachHiddenIcon(button)
+
+        -- "color-alpha" writes to cfg.color (a flat {r,g,b,a} table), same as the Border
+        -- indicator's Duration Bar color -- NOT cfg.colors (plural, GetCfgColor's field),
+        -- which is the multi-slot table used by Bar/Block/Text/Rect instead.
+        local c = cfg.color or { 1, 0.85, 0.1, 1 }
+        local r, g, b, a = c[1] or 1, c[2] or 0.85, c[3] or 0.1, c[4] or 1
+
+        -- glows the whole frame (like Border), not just the health bar
+        local glowFrame = CreateFrame("Frame", nil, button)
+        glowFrame:EnableMouse(false)
+        glowFrame:SetAllPoints(unitButton)
+        local base = (unitButton.GetFrameLevel and unitButton:GetFrameLevel()) or 1
+        pcall(glowFrame.SetFrameLevel, glowFrame, base + (cfg.frameLevel or 1) + 55)
+
+        if F.StartEngineGlow then
+            F.StartEngineGlow(glowFrame, cfg.glowStyle, r, g, b, a)
+        end
     end
 end
 
@@ -952,7 +1020,7 @@ local function MakeInitAuraButton(cfg)
 end
 
 local function ResolveContainerParent(unitButton, cfg)
-    if cfg and cfg.type == "border" and F.BD(unitButton).widgets and F.BD(unitButton).widgets.highLevelFrame then
+    if cfg and (cfg.type == "border" or cfg.type == "glow") and F.BD(unitButton).widgets and F.BD(unitButton).widgets.highLevelFrame then
         return F.BD(unitButton).widgets.highLevelFrame
     end
     if cfg and cfg.type == "overlay" and F.BD(unitButton).widgets and F.BD(unitButton).widgets.healthBar then
@@ -1019,15 +1087,30 @@ local function MakeParkKey(cfg)
         cfg.showTooltip,
         cfg.showAnimation,
         F.StampAuraFont(cfg.font),
-        StampCfgValue(cfg.colors),
+        -- cfg.colors used to be stamped directly (StampCfgValue(cfg.colors)) -- but its color
+        -- pickers fire on every drag tick just like the Duration Bar one, so a direct live stamp
+        -- rebuilt on every tick and tripped the rebuild-loop circuit breaker. Same debounced
+        -- counter fix as _durationBarGen below.
+        cfg._colorsGen,
         -- per-spell colors (bars/blocks/border) live inside cfg.auras, which otherwise isn't part of
         -- this key at all -- without this, editing a color reuses the old pooled/parked button
-        -- instead of rebuilding. A plain counter bumped only on an actual "auras" edit (see below) --
-        -- confirmed working, no rebuild-loop issue like cfg.fadeOut had.
+        -- instead of rebuilding. A plain counter bumped only on an actual "auras" edit (see below).
         cfg._auraColorGen,
+        -- same idea for Duration Bar + its color -- bumped only after the setting has SETTLED
+        -- (debounced in the UpdateIndicators callback below), not on every drag tick of the color
+        -- picker: bumping on every tick forced a rebuild per tick, which is what tripped the
+        -- rebuild-loop circuit breaker the first time this was tried. cfg.fadeOut, unlike this
+        -- one, is unused/ignored above and deliberately stays out of this key entirely.
+        cfg._durationBarGen,
         cfg.texture,
         cfg.thickness,
-        cfg.barOrientation,
+        -- NOTE: the widget writes to cfg.orientation (its settingsTable key "barOrientation" gets
+        -- remapped to "orientation" before saving -- see Indicators.lua), and MakeInitBarButton
+        -- below reads cfg.orientation too. cfg.barOrientation itself is never actually written by
+        -- anything, so stamping it here was a dead, always-nil field -- the park key never
+        -- differed when orientation changed, so switching direction needed a manual /reload
+        -- before it took effect.
+        cfg.orientation,
         StampCfgValue(cfg.duration),
         StampCfgValue(cfg.stack),
         StampCfgValue(cfg.glowOptions)
@@ -1185,6 +1268,8 @@ local function CreateCustomContainer(unitButton, cfg, existing)
             initFrame = MakeInitTextureButton(cfg, unitButton)
         elseif cfg.type == "overlay" then
             initFrame = MakeInitOverlayButton(cfg, unitButton)
+        elseif cfg.type == "glow" then
+            initFrame = MakeInitGlowButton(cfg, unitButton)
         else
             initFrame = MakeInitAuraButton(cfg)
         end
@@ -1420,9 +1505,6 @@ local function SyncButton(unitButton, allowCreate)
 end
 
 function I.ShouldSkipLegacyCustom(indicatorTable)
-    if indicatorTable and indicatorTable.type == "glow" then
-        return true
-    end
     if not ProbeSupported() or not indicatorTable then
         return false
     end
@@ -1496,13 +1578,24 @@ local function RebuildAllCustomAuraDisplays()
     end, true)
 end
 
+local durationBarBumpTimer
+local colorsBumpTimer
+
 if SUPPORTED then
-    Cell.RegisterCallback("UpdateIndicators", "CustomAuraDisplay_UpdateIndicators", function(layout, indicatorName, setting)
+    Cell.RegisterCallback("UpdateIndicators", "CustomAuraDisplay_UpdateIndicators", function(layout, indicatorName, setting, value)
         if not layout or not indicatorName or not tostring(indicatorName):find("^indicator") then
             if not layout or not indicatorName then
                 C_Timer.After(0, I.RefreshAllCustomAuraDisplays)
             end
             return
+        end
+        -- Checkbox widgets ("checkbutton4:durationBar" etc.) fire the event with the literal
+        -- string "checkbutton" as `setting` and the REAL field name as the next argument
+        -- (`value`) instead -- unlike every other widget type, which fires the real field name
+        -- directly as `setting`. Normalize so the checks below work either way.
+        local realSetting = setting
+        if setting == "checkbutton" and (value == "durationBar" or value == "durationBarReverse") then
+            realSetting = value
         end
         if setting == "auras" then
             -- bump a per-indicator counter so MakeParkKey sees a real, stable change and forces a
@@ -1517,6 +1610,49 @@ if SUPPORTED then
                     end
                 end
             end
+        elseif realSetting == "durationBar" or realSetting == "durationBarReverse" or realSetting == "color" or realSetting == "glowStyle" then
+            -- Debounced: the color picker fires on every drag tick, and this used to bump
+            -- (and rebuild) on every single one of those -- fast enough to trip the
+            -- rebuild-loop circuit breaker while just dragging the color slider. Wait for
+            -- things to settle, then bump once and refresh once.
+            if durationBarBumpTimer then
+                durationBarBumpTimer:Cancel()
+            end
+            durationBarBumpTimer = C_Timer.NewTimer(0.4, function()
+                durationBarBumpTimer = nil
+                local layoutTable = Cell.vars.currentLayoutTable
+                local indicators = layoutTable and layoutTable.indicators
+                if indicators then
+                    for i = 1, #indicators do
+                        if indicators[i].indicatorName == indicatorName then
+                            indicators[i]._durationBarGen = (indicators[i]._durationBarGen or 0) + 1
+                            break
+                        end
+                    end
+                end
+                I.RefreshAllCustomAuraDisplays()
+            end)
+        elseif setting == "colors" then
+            -- Same drag-tick rebuild-storm risk as the Duration Bar color above -- the "colors"
+            -- color pickers (Normal/Border/Background) fire on every drag tick too. Debounced
+            -- the same way, into its own counter.
+            if colorsBumpTimer then
+                colorsBumpTimer:Cancel()
+            end
+            colorsBumpTimer = C_Timer.NewTimer(0.4, function()
+                colorsBumpTimer = nil
+                local layoutTable = Cell.vars.currentLayoutTable
+                local indicators = layoutTable and layoutTable.indicators
+                if indicators then
+                    for i = 1, #indicators do
+                        if indicators[i].indicatorName == indicatorName then
+                            indicators[i]._colorsGen = (indicators[i]._colorsGen or 0) + 1
+                            break
+                        end
+                    end
+                end
+                I.RefreshAllCustomAuraDisplays()
+            end)
         end
         if setting == "create" or setting == "remove"
             or setting == "auras" or setting == "position" or setting == "size"

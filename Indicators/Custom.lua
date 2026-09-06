@@ -24,7 +24,10 @@ function I.UpdateIndicatorTable(indicatorTable)
     local auraType = indicatorTable["auraType"]
 
     -- keep custom indicators in table
-    if indicatorTable["enabled"] and not (Cell.isRetail and indicatorTable["type"] == "glow") then enabledIndicators[indicatorName] = true end
+    -- (glow used to be excluded here on Retail while it was fully disabled -- every legacy
+    -- scan function below is already separately guarded by ShouldSkipLegacyCustom, same as
+    -- every other native-supported type, so glow doesn't need its own extra exclusion anymore)
+    if indicatorTable["enabled"] then enabledIndicators[indicatorName] = true end
 
     -- NOTE: icons is different from other custom indicators, more like the Debuffs indicator
     if indicatorTable["type"] == "icons" then
@@ -97,17 +100,12 @@ function I.CreateIndicator(parent, indicatorTable)
     elseif indicatorTable["type"] == "texture" then
         indicator = I.CreateAura_Texture(nil, F.BD(parent).widgets.indicatorFrame)
     elseif indicatorTable["type"] == "glow" then
-        if Cell.isRetail then
-            indicator = CreateFrame("Frame", nil, parent)
-            indicator:Hide()
-            indicator.indicatorType = "glow"
-            indicator.SetCooldown = function() end
-            indicator.SetupGlow = function() end
-            indicator.SetFadeOut = function() end
-            indicator.Show = function() end
-        else
-            indicator = I.CreateAura_Glow(nil, F.BD(parent).widgets.highLevelFrame)
-        end
+        -- Real Retail rendering now comes from the native engine (CustomAuraDisplay.lua,
+        -- MakeInitGlowButton) once ShouldSkipLegacyCustom hands it off -- this legacy object
+        -- still exists everywhere for the settings-panel preview (always safe there, it's never
+        -- inside the native engine's restricted button subtree) and gets explicitly Hidden on
+        -- the real Retail frame by CustomAuraDisplay.lua once the native engine takes over.
+        indicator = I.CreateAura_Glow(nil, F.BD(parent).widgets.highLevelFrame)
     elseif indicatorTable["type"] == "overlay" then
         indicator = I.CreateAura_Overlay(nil, parent)
     elseif indicatorTable["type"] == "block" then

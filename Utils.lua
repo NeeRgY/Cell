@@ -2361,11 +2361,11 @@ local function EnsureBarColorOverlay(bar, c1)
     return bar and bar._cellDurationColorTex
 end
 
-local function ApplyDurationBarBinding(button, bar, curve)
+local function ApplyDurationBarBinding(button, bar, curve, property)
     if not (button and bar and button.SetDurationBar and curve) then
         return
     end
-    local bind = { curve = curve, property = GetRemainProp() }
+    local bind = { curve = curve, property = property or GetRemainProp() }
     local function BaseOpts()
         local opts = {}
         local dirEnum = Enum and Enum.StatusBarTimerDirection
@@ -2387,6 +2387,9 @@ local function ApplyDurationBarBinding(button, bar, curve)
     end
     pcall(button.SetDurationBar, button, bar, BaseOpts())
 end
+
+-- exposed for CustomAuraDisplay.lua's Border fade-out
+F.GetDurationPercentProperty = GetPercentProp
 
 local function ReadBarTotalDuration(bar)
     if not bar then
@@ -3391,6 +3394,17 @@ function F.IsInRange(unit, check)
         return true
     end
 
+    -- Your own pet never strays far enough from you for a range check to be
+    -- meaningful, and the spell-based fallbacks below (friendSpells/petSpells)
+    -- are fragile across classes/specs -- e.g. a class's friendSpells entry
+    -- (Hunter: Master's Call) isn't always a legal cast on your own pet, so it
+    -- can report a definitive "out of range" before petSpells is ever tried.
+    -- Simplest fix: don't range-check the personal pet mini-frame at all.
+    local isOwnPet = GetNonSecretBoolean(UnitIsUnit(unit, "pet"), false)
+    if isOwnPet then
+        return true
+    end
+
     local visible = GetNonSecretBoolean(UnitIsVisible(unit), false)
     if not visible then
         return false
@@ -3419,6 +3433,21 @@ function F.IsInRange(unit, check)
             end
 
             local isDead = GetNonSecretBoolean(UnitIsDead(unit), false)
+            local isPet = GetNonSecretBoolean(UnitIsUnit(unit, "pet"), false)
+
+            -- Check the pet-specific spell (e.g. Mend Pet) before the generic
+            -- friendSpells one -- a class's friendSpells entry (e.g. Hunter's
+            -- Master's Call) is picked for checking party members and often isn't
+            -- a legal cast on your own pet, so the range API can come back with a
+            -- definitive (non-nil) false for it regardless of actual distance,
+            -- which used to shadow the pet check below and never let it run.
+            if isPet and not isDead and spell_pet then
+                local petInRange = GetNonSecretRangeResult(UnitInSpellRange(spell_pet, unit), nil)
+                if petInRange ~= nil then
+                    return petInRange
+                end
+            end
+
             if isDead then
                 if spell_dead then
                     local deadInRange = GetNonSecretRangeResult(UnitInSpellRange(spell_dead, unit), nil)
@@ -3441,7 +3470,6 @@ function F.IsInRange(unit, check)
                 return GetNonSecretRangeResult(inRange, true)
             end
 
-            local isPet = GetNonSecretBoolean(UnitIsUnit(unit, "pet"), false)
             if isPet and spell_pet then
                 -- no spell_friend, use spell_pet
                 local petInRange = GetNonSecretRangeResult(UnitInSpellRange(spell_pet, unit), nil)

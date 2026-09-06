@@ -794,10 +794,10 @@ local function Dispels_SetDispels(self, dispelTypes)
                     end
                     self.highlight:SetTexCoord(0, 1, 0, 1)
                     self.highlight:SetVertexColor(r, g, b, 1)
-                else -- entire / entire-solid (full health bar)
+                else -- fill / full (legacy: entire / entire-solid)
                     self.highlight:SetTexture(Cell.vars.whiteTexture)
                     self.highlight:SetTexCoord(0, 1, 0, 1)
-                    self.highlight:SetVertexColor(r, g, b, self.highlightType == "entire-solid" and 1 or 0.5)
+                    self.highlight:SetVertexColor(r, g, b, self.highlightOpacity or 0.5)
                 end
                 self.highlight:Show()
             end
@@ -891,20 +891,41 @@ local function Dispels_SetOrientation(self, orientation)
     self:UpdateSize()
 end
 
-local function Dispels_UpdateHighlight(self, highlightType)
+-- highlightType is either the new {highlightType, opacity} pair (opacity 0-100,
+-- only meaningful for fill/full) or a bare legacy string from an old profile --
+-- "entire"/"entire-solid" map onto fill/full at their old fixed opacity,
+-- "gradient-sharp" folds into "edge-bottom" like it always has.
+local function Dispels_UpdateHighlight(self, highlightType, opacity)
+    if type(highlightType) == "table" then
+        highlightType, opacity = highlightType[1], highlightType[2]
+    end
     if highlightType == "gradient-sharp" then
         highlightType = "edge-bottom"
-    elseif highlightType ~= "edge-top" and highlightType ~= "edge-bottom" and highlightType ~= "none" and highlightType ~= "entire-solid" then
-        highlightType = "entire"
+    elseif highlightType == "entire" then
+        highlightType, opacity = "fill", opacity or 50
+    elseif highlightType == "entire-solid" then
+        highlightType, opacity = "full", opacity or 100
+    elseif highlightType ~= "edge-top" and highlightType ~= "edge-bottom" and highlightType ~= "none" and highlightType ~= "fill" and highlightType ~= "full" then
+        highlightType, opacity = "fill", opacity or 50
     end
     self.highlightType = highlightType
+    self.highlightOpacity = (opacity or 50) / 100
     if highlightType == "none" then
         self.highlight:Hide()
         return
     end
     self.highlight:SetBlendMode("BLEND")
     self.highlight:ClearAllPoints()
-    self.highlight:SetAllPoints(F.BD(self.parent).widgets.healthBar)
+    local healthBar = F.BD(self.parent).widgets.healthBar
+    if highlightType == "fill" then
+        -- Tied to the current health-bar FILL, not the whole frame -- matches
+        -- the current health percentage instead of always covering it entirely.
+        local fillTex = healthBar:GetStatusBarTexture()
+        self.highlight:SetPoint("TOPLEFT", healthBar, "TOPLEFT")
+        self.highlight:SetPoint("BOTTOMRIGHT", fillTex or healthBar, "BOTTOMRIGHT")
+    else
+        self.highlight:SetAllPoints(healthBar)
+    end
     self.highlight:SetDrawLayer("ARTWORK", 0)
     if highlightType == "edge-top" then
         self.highlight:SetTexture("Interface\\AddOns\\Cell\\Media\\Edge-Fade-Top")
@@ -918,12 +939,13 @@ local function Dispels_UpdateHighlight(self, highlightType)
     end
 end
 
--- Border around the WHOLE unit frame (not just the health bar), colored by dispel
--- type. Independent toggle/thickness from the health-bar "highlightType" overlay
--- above -- both can be used at once, or just one, or neither.
+-- Border around the health bar (not the whole unit frame, so it doesn't wrap the
+-- power bar too), colored by dispel type. Independent toggle/thickness from the
+-- health-bar "highlightType" overlay above -- both can be used at once, or just
+-- one, or neither.
 local function Dispels_SetFrameBorderThickness(self, thickness)
     thickness = thickness or 3
-    local parent = self.parent
+    local parent = F.BD(self.parent).widgets.healthBar
     self.frameBorderTop:ClearAllPoints()
     self.frameBorderTop:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, 0)
     self.frameBorderTop:SetPoint("TOPRIGHT", parent, "TOPRIGHT", 0, 0)

@@ -1981,7 +1981,7 @@ local orientationDropdown, anchorDropdown, spacingXSlider, spacingYSlider
 local sameSizeAsMainCB, sameArrangementAsMainCB
 local combineGroupsCB, sortByRoleCB, roleOrderWidget, hideSelfCB
 local showNpcCB, separateNpcCB, spotlightCB, hidePlaceholderCB, spotlightOrientationDropdown
-local soloPetCB, partyPetsCB, partyPetsDetachedCB, raidPetsCB
+local soloPetCB, partyPetsCB, partyPetsDetachedCB, raidPetsCB, showDebuffsOnPetCB, showRaidDebuffsOnPetCB
 
 local function UpdateSize()
     if selectedLayout == Cell.vars.currentLayout then
@@ -2461,6 +2461,24 @@ local function CreateLayoutSetupPane()
     end, L["Show Raid Pets"], L["Show pets in a separate frame"], L["You can move it in Preview mode"])
     raidPetsCB:SetPoint("TOPLEFT", partyPetsCB, "BOTTOMLEFT", 0, -8)
 
+    showDebuffsOnPetCB = Cell.CreateCheckButton(pages.pet, L["Show Debuffs on Pet Frames"], function(checked)
+        selectedLayoutTable["pet"]["showDebuffs"] = checked
+        if selectedLayout == Cell.vars.currentLayout then
+            Cell.Fire("UpdateLayout", selectedLayout, "pet")
+        end
+    end)
+    showDebuffsOnPetCB:SetPoint("TOPLEFT", raidPetsCB, "BOTTOMLEFT", 0, -8)
+
+    showRaidDebuffsOnPetCB = Cell.CreateCheckButton(pages.pet,
+        Cell.isRetail and L["Show Highlight Debuffs on Pet Frames"] or L["Show Raid Debuffs on Pet Frames"],
+        function(checked)
+            selectedLayoutTable["pet"]["showRaidDebuffs"] = checked
+            if selectedLayout == Cell.vars.currentLayout then
+                Cell.Fire("UpdateLayout", selectedLayout, "pet")
+            end
+        end)
+    showRaidDebuffsOnPetCB:SetPoint("TOPLEFT", showDebuffsOnPetCB.label, "TOPRIGHT", 20, 0)
+
     -- pet side
     petSideDropdown = Cell.CreateDropdown(pages.pet, 117)
     petSideDropdown:SetPoint("TOPLEFT", pages.pet, "TOPLEFT", 200, -45)
@@ -2595,7 +2613,7 @@ local function CreateLayoutSetupPane()
         sameSizeAsMainCB:ClearAllPoints()
         if tab == "main" then
         elseif tab == "pet" then
-            sameSizeAsMainCB:SetPoint("TOPLEFT", raidPetsCB, "BOTTOMLEFT", 0, -14)
+            sameSizeAsMainCB:SetPoint("TOPLEFT", showDebuffsOnPetCB, "BOTTOMLEFT", 0, -14)
         elseif tab == "npc" then
             sameSizeAsMainCB:SetPoint("TOPLEFT", separateNpcCB, "BOTTOMLEFT", 0, -14)
         elseif tab == "spotlight" then
@@ -2826,6 +2844,8 @@ LoadLayoutDB = function(layout, dontShowPreview)
     partyPetsDetachedCB:SetEnabled(selectedLayoutTable["pet"]["partyEnabled"])
     partyPetsDetachedCB:SetChecked(selectedLayoutTable["pet"]["partyDetached"])
     raidPetsCB:SetChecked(selectedLayoutTable["pet"]["raidEnabled"])
+    showDebuffsOnPetCB:SetChecked(selectedLayoutTable["pet"]["showDebuffs"] ~= false)
+    showRaidDebuffsOnPetCB:SetChecked(selectedLayoutTable["pet"]["showRaidDebuffs"] ~= false)
     showNpcCB:SetChecked(selectedLayoutTable["npc"]["enabled"])
     separateNpcCB:SetChecked(selectedLayoutTable["npc"]["separate"])
     separateNpcCB:SetEnabled(selectedLayoutTable["npc"]["enabled"])

@@ -49,7 +49,11 @@ local cachedLayouts
 -- unconditionally re-driving every unit button on every single combat transition.
 local needsCombatCatchup = false
 
+-- ht is either the new {highlightType, opacity} pair or a bare legacy string.
 local function NormalizeDispelHighlightType(ht)
+    if type(ht) == "table" then
+        ht = ht[1]
+    end
     if ht == "none" then
         return "none"
     end
@@ -59,10 +63,28 @@ local function NormalizeDispelHighlightType(ht)
     if ht == "edge-bottom" or ht == "gradient-sharp" then
         return "edge-bottom"
     end
-    if ht == "entire-solid" then
-        return "entire-solid"
+    if ht == "full" or ht == "entire-solid" then
+        return "full"
     end
-    return "entire"
+    return "fill" -- "fill", legacy "entire", or unset
+end
+
+-- Returns 0-1. Legacy "entire"/"entire-solid" (no opacity saved) keep their old
+-- fixed 50%/100% look; everything else uses the saved opacity slider value.
+local function ResolveDispelHighlightOpacity(ht)
+    local htType, opacity
+    if type(ht) == "table" then
+        htType, opacity = ht[1], ht[2]
+    else
+        htType = ht
+    end
+    if opacity then
+        return opacity / 100
+    end
+    if htType == "entire-solid" or htType == "full" then
+        return 1
+    end
+    return DISPEL_FULL_ALPHA
 end
 
 local function EnsureAuraContainerLoaded()
@@ -136,6 +158,12 @@ local TRACKED_SET = {}
 for i = 1, #TRACKED do
     TRACKED_SET[TRACKED[i]] = true
 end
+
+-- Latest cfg per indicator, kept fresh on every CreateIndicatorContainer call (both the
+-- "build fresh" and "just resync" paths). MakeInitAuraButton/MakeInitDispelAuraButton read
+-- from this instead of only using what their closure captured when it was created -- see
+-- the comment on those functions for why that matters.
+local currentConfigs = {}
 
 local ALL_TRACKED = {}
 
@@ -638,36 +666,48 @@ end
 
 local function MakeInitDispelAuraButton(cfg, token, unitButton)
     return function(button)
-        if not F.InitEngineAuraButtonOnce(button) then
-            return
-        end
+        -- Re-read the live config every call -- see MakeInitAuraButton's comment below for
+        -- why the closure's own captured `cfg` goes stale.
+        cfg = currentConfigs["dispels"] or cfg
         local sizeW, sizeH = ResolveSize(cfg)
         local iconStyle = cfg.iconStyle or "blizzard"
         local showIcons = iconStyle ~= "none"
+        -- Size (like MakeInitAuraButton) is re-applied on every call, not just the first --
+        -- this used to sit after the InitEngineAuraButtonOnce early-return below, so a
+        -- reused/pooled button never picked up a later size change at all.
+        if showIcons then
+            pcall(button.SetSize, button, sizeW, sizeH)
+        else
+            pcall(button.SetSize, button, 0.001, 0.001)
+        end
+        if not F.InitEngineAuraButtonOnce(button) then
+            return
+        end
         local mode = NormalizeDispelHighlightType(cfg and cfg.highlightType)
         local health = unitButton and F.BD(unitButton).widgets and F.BD(unitButton).widgets.healthBar
         local r, g, b = I.GetDebuffTypeColor(token)
         r, g, b = r or 1, g or 1, b or 1
         local isEdge = mode == "edge-top" or mode == "edge-bottom"
-        local alpha = (isEdge or mode == "entire-solid") and 1 or DISPEL_FULL_ALPHA
+        local alpha = isEdge and 1 or ResolveDispelHighlightOpacity(cfg and cfg.highlightType)
         local asset = WHITE_TEXTURE
         if mode == "edge-top" then
             asset = EDGE_FADE_TOP
         elseif mode == "edge-bottom" then
             asset = EDGE_FADE_BOTTOM
         end
-
-        if showIcons then
-            pcall(button.SetSize, button, sizeW, sizeH)
-        else
-            pcall(button.SetSize, button, 0.001, 0.001)
-        end
         F.SetupEngineAuraButtonMouse(button, true)
 
         if health and mode ~= "none" then
             local overlay = button:CreateTexture(nil, "ARTWORK", nil, 3)
             overlay:ClearAllPoints()
-            overlay:SetAllPoints(health)
+            if mode == "fill" then
+                -- Tied to the current health-bar FILL, not the whole frame.
+                local fillTex = health:GetStatusBarTexture()
+                overlay:SetPoint("TOPLEFT", health, "TOPLEFT")
+                overlay:SetPoint("BOTTOMRIGHT", fillTex or health, "BOTTOMRIGHT")
+            else
+                overlay:SetAllPoints(health)
+            end
             overlay:SetTexture(asset)
             overlay:SetTexCoord(0, 1, 0, 1)
             overlay:SetVertexColor(r, g, b, alpha)
@@ -689,11 +729,12 @@ local function MakeInitDispelAuraButton(cfg, token, unitButton)
             end
         end
 
-        -- Frame border: strips anchored to the WHOLE unit frame (not the health bar),
-        -- owned by this per-token button so they inherit its show/hide from Blizzard's
-        -- engine automatically -- same technique as the health-bar overlay above, just
-        -- anchored differently. No extra "which token is active" tracking needed.
-        if unitButton and cfg.showDispelFrameBorder == true then
+        -- Frame border: strips anchored to the health bar (not the whole unit frame,
+        -- so it doesn't wrap the power bar too), owned by this per-token button so
+        -- they inherit its show/hide from Blizzard's engine automatically -- same
+        -- technique as the health-bar overlay above, just anchored differently. No
+        -- extra "which token is active" tracking needed.
+        if unitButton and health and cfg.showDispelFrameBorder == true then
             local bt = cfg.thickness or 3
             local lvl = (unitButton.GetFrameLevel and unitButton:GetFrameLevel() or 1)
                 + 40 + (DISPEL_TYPE_LEVEL[token] or 1)
@@ -705,20 +746,20 @@ local function MakeInitDispelAuraButton(cfg, token, unitButton)
                 return s
             end
             local top = mkStrip()
-            top:SetPoint("TOPLEFT", unitButton, "TOPLEFT", 0, 0)
-            top:SetPoint("TOPRIGHT", unitButton, "TOPRIGHT", 0, 0)
+            top:SetPoint("TOPLEFT", health, "TOPLEFT", 0, 0)
+            top:SetPoint("TOPRIGHT", health, "TOPRIGHT", 0, 0)
             top:SetHeight(bt)
             local bottom = mkStrip()
-            bottom:SetPoint("BOTTOMLEFT", unitButton, "BOTTOMLEFT", 0, 0)
-            bottom:SetPoint("BOTTOMRIGHT", unitButton, "BOTTOMRIGHT", 0, 0)
+            bottom:SetPoint("BOTTOMLEFT", health, "BOTTOMLEFT", 0, 0)
+            bottom:SetPoint("BOTTOMRIGHT", health, "BOTTOMRIGHT", 0, 0)
             bottom:SetHeight(bt)
             local left = mkStrip()
-            left:SetPoint("TOPLEFT", unitButton, "TOPLEFT", 0, 0)
-            left:SetPoint("BOTTOMLEFT", unitButton, "BOTTOMLEFT", 0, 0)
+            left:SetPoint("TOPLEFT", health, "TOPLEFT", 0, 0)
+            left:SetPoint("BOTTOMLEFT", health, "BOTTOMLEFT", 0, 0)
             left:SetWidth(bt)
             local right = mkStrip()
-            right:SetPoint("TOPRIGHT", unitButton, "TOPRIGHT", 0, 0)
-            right:SetPoint("BOTTOMRIGHT", unitButton, "BOTTOMRIGHT", 0, 0)
+            right:SetPoint("TOPRIGHT", health, "TOPRIGHT", 0, 0)
+            right:SetPoint("BOTTOMRIGHT", health, "BOTTOMRIGHT", 0, 0)
             right:SetWidth(bt)
         end
     end
@@ -749,8 +790,20 @@ local function AttachInvisibleCooldown(button)
     return cooldown
 end
 
-local function MakeInitAuraButton(cfg, unit, wantBorder)
+-- Re-reads the live config on every call instead of only ever using what this closure
+-- captured when it was created. Necessary because F.ApplyAuraGroupTuning -- the "retune an
+-- already-registered aura group" sync path, taken on every regular resync once a group
+-- exists -- never updates the group's initializeFrame callback; only a genuine
+-- destroy+AddAuraGroup (a real rebuild, e.g. from a changed park key) does. So a button that
+-- gets reused for a LATER aura on an already-registered group kept calling the ORIGINAL,
+-- now-stale closure forever -- a size/animation/etc change only ever reached brand-new
+-- buttons, never recycled ones (confirmed: "Debuffs" size changes only applied to the next
+-- NEW debuff instance, not ones reusing an existing pooled button). HealersAuraDisplay.lua
+-- never had this problem because it uses a single static init function reading a shared
+-- cachedConfig instead of a fresh closure per build -- same fix, applied here too.
+local function MakeInitAuraButton(cfg, unit, wantBorder, indicatorName)
     return function(button)
+        cfg = currentConfigs[indicatorName] or cfg
         local sizeW, sizeH = ResolveSize(cfg)
         pcall(button.SetSize, button, sizeW, sizeH)
         F.SetupEngineAuraButtonMouse(button, cfg.showTooltip ~= true, cfg)
@@ -769,6 +822,16 @@ local function MakeInitAuraButton(cfg, unit, wantBorder)
         icon:SetAllPoints(button)
         icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
         pcall(button.SetIcon, button, icon)
+
+        -- Highlight Debuffs / Debuffs: optional per-icon glow (native-engine-safe,
+        -- EngineGlow.lua) -- off by default. Retail only; Classic keeps whatever it already has.
+        if Cell.isRetail and (indicatorName == "raidDebuffs" or indicatorName == "debuffs")
+            and cfg.highlightDebuffGlow and F.StartEngineGlow then
+            local glowFrame = CreateFrame("Frame", nil, button)
+            glowFrame:EnableMouse(false)
+            glowFrame:SetAllPoints(button)
+            F.StartEngineGlow(glowFrame, "proc", 1, 0.85, 0.1, 1)
+        end
 
         if wantBorder and DISPEL_BORDER_OPTS then
             -- Four thin edge strips, fully within the button's own bounds (immune to
@@ -968,6 +1031,15 @@ local function ClearDebuffPrivateAuras(st)
         end
     end
     wipe(st.paAnchorIDs)
+    -- The anchors we just removed were created with whatever size/num/etc was live at
+    -- BindDebuffPrivateAuras' last call -- Blizzard bakes iconWidth/iconHeight into the
+    -- anchor at creation time, it can't be resized in place. Forget the bound unit so the
+    -- next DriveContainer call takes the "unit changed" branch (BindDebuffPrivateAuras,
+    -- a real teardown+recreate) instead of LayoutDebuffPrivateAuras (which only moves/resizes
+    -- the invisible holder frame, not the actual icon anchors). Otherwise a settings change
+    -- (e.g. size) never reaches the private-aura icons for a unit whose token never changes
+    -- (e.g. "player").
+    st.paUnit = nil
 end
 
 local function LayoutDebuffPrivateAuras(st, unitButton, cfg)
@@ -1113,9 +1185,10 @@ local function MakeParkKey(indicatorName, cfg)
         cfg and cfg.showTooltip,
         F.StampAuraFont(cfg and cfg.font),
         groupSig,
-        indicatorName == "dispels" and NormalizeDispelHighlightType(cfg and cfg.highlightType) or "",
+        indicatorName == "dispels" and (NormalizeDispelHighlightType(cfg and cfg.highlightType)
+            .. ":" .. tostring(ResolveDispelHighlightOpacity(cfg and cfg.highlightType))) or "",
         cfg and cfg.iconStyle,
-        ""
+        (indicatorName == "raidDebuffs" or indicatorName == "debuffs") and (cfg and cfg.highlightDebuffGlow and "1" or "0") or ""
     )
 end
 
@@ -1183,7 +1256,17 @@ local function AnchorContainer(container, unitButton, cfg, indicatorName)
 
     container:ClearAllPoints()
     container:SetPoint(point, relativeTo, relativePoint, x, y)
+    -- Old profiles can still carry the legacy 2-way "horizontal"/"vertical" values (from
+    -- before this became a 4-way left/right/top/bottom dropdown) -- neither matches any of
+    -- the checks below, so they silently fell through to the horizontal-row math/growth
+    -- direction regardless of what was actually saved. Normalize them the same way
+    -- ResolveBarOrientation (CustomAuraDisplay.lua) already does for the Bar indicator.
     local orientation = cfg.orientation or "left-to-right"
+    if orientation == "horizontal" then
+        orientation = "left-to-right"
+    elseif orientation == "vertical" then
+        orientation = "top-to-bottom"
+    end
     local rowW = numPerLine * sizeW + math.max(numPerLine - 1, 0) * math.abs(spacingX)
     local rowH = sizeH
     if orientation == "top-to-bottom" or orientation == "bottom-to-top" then
@@ -1278,6 +1361,7 @@ local function ApplyCombatTuning(container, indicatorName, cfg, st)
 end
 
 local function CreateIndicatorContainer(unitButton, indicatorName, cfg, existing)
+    currentConfigs[indicatorName] = cfg
     local groups = BuildGroupsForIndicator(indicatorName, cfg)
     if #groups == 0 then
         return nil, "skip"
@@ -1309,7 +1393,7 @@ local function CreateIndicatorContainer(unitButton, indicatorName, cfg, existing
     local unit = ResolveUnit(unitButton) or "player"
     -- Debuff-type border: debuffs only for now, user-configurable (enabled + thickness).
     local wantBorder = indicatorName == "debuffs" and cfg.showDispelBorder ~= false
-    local defaultInitFn = MakeInitAuraButton(cfg, unit, wantBorder)
+    local defaultInitFn = MakeInitAuraButton(cfg, unit, wantBorder, indicatorName)
 
     AnchorContainer(container, unitButton, cfg, indicatorName)
 
@@ -1403,6 +1487,22 @@ local function DriveContainer(unitButton, indicatorName, cfg, enable)
     end
 end
 
+-- "Show Debuffs on Pet Frames" / "Show Highlight Debuffs on Pet Frames" (Layouts
+-- -> Pet). Pet unit buttons are flagged by PetFrame.lua (button.isGroupPet); when
+-- the relevant setting is off, treat that indicator for those buttons the same as
+-- one with zero groups configured -- no container.
+local PET_HIDE_SETTING_BY_INDICATOR = {
+    debuffs = "showDebuffs",
+    raidDebuffs = "showRaidDebuffs",
+}
+local function IsDebuffsHiddenOnPet(unitButton, indicatorName)
+    local settingKey = PET_HIDE_SETTING_BY_INDICATOR[indicatorName]
+    if not settingKey then return false end
+    if not (unitButton and unitButton.isGroupPet) then return false end
+    local layout = Cell.vars.currentLayoutTable
+    return layout and layout["pet"] and layout["pet"][settingKey] == false
+end
+
 local function EnsureIndicatorContainer(unitButton, indicatorName, cfg, allowCreate)
     if not ProbeSupported() then return false end
     local map = stateByButton[unitButton]
@@ -1414,6 +1514,14 @@ local function EnsureIndicatorContainer(unitButton, indicatorName, cfg, allowCre
     if not st then
         st = {}
         map[indicatorName] = st
+    end
+
+    if IsDebuffsHiddenOnPet(unitButton, indicatorName) then
+        DestroyContainer(st)
+        HideLegacy(unitButton, indicatorName)
+        st.createFailed = nil
+        st.failedVersion = nil
+        return false
     end
 
     if #(BuildGroupsForIndicator(indicatorName, cfg)) == 0 then
@@ -1491,7 +1599,7 @@ local function NeedsContainerBuild(unitButton, name, cfg)
     if IsCooldownAuraIndicator(name) and not UseEngineCooldownAuras() then
         return false
     end
-    if #(BuildGroupsForIndicator(name, cfg)) == 0 then
+    if IsDebuffsHiddenOnPet(unitButton, name) or #(BuildGroupsForIndicator(name, cfg)) == 0 then
         return false
     end
     local map = stateByButton[unitButton]
