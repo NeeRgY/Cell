@@ -27,6 +27,8 @@ Cell.unitButtons.solo["player"] = playerButton
 local petButton = CreateFrame("Button", soloFrame:GetName().."Pet", soloFrame, "CellUnitButtonTemplate")
 -- petButton.type = "pet" -- layout setup
 petButton:SetAttribute("unit", "pet")
+-- Lets "Show Debuffs on Pet Frames" (Layouts -> Pet) gate this pet too.
+petButton.isAnyGroupPet = true
 Cell.unitButtons.solo["pet"] = petButton
 
 local function SoloFrame_ApplyLayoutContent(layout, which)

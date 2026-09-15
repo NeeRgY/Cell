@@ -26,6 +26,7 @@ local debuffs = {
         [524] = { -- Exarch Maladaar
             32421, 32346, 37334, 14309, 37332, 37369, 37331, 37330, 37328, 37335,
             15708, 16856, 16145,
+            32424, -- Avatar (DBM cross-check)
         },
     },
 
@@ -34,7 +35,8 @@ local debuffs = {
             22911, 32315, 33865, 25603, 34942, 25602, 34925, 34322, 34922, 38065,
             17883, 37668, 17145, 38064, 13323, 34940, 33925, 39332,
         },
-        [534] = { -- Pandemonius -- no debuffs
+        [534] = { -- Pandemonius
+            32358, 38759, -- Shell (DBM cross-check)
         },
         [535] = { -- Tavarok
             32361, 33919,
@@ -51,6 +53,8 @@ local debuffs = {
             35120, 38056, 18144, 38238, 27641, 32651, 32674, 32654, 32682, 38149,
             -- Anzu (bonus boss, no dedicated boss entry)
             40321, 40199, 40184, 40303, 31273,
+            32810, -- Stoned (Anzu, DBM cross-check)
+            33537, 33538, 33539, 33540, -- summon effects (DBM cross-check)
         },
         [541] = { -- Darkweaver Syth
             33534, 38135, 15039, 15616, 12548, 21401, 33620, 38136, 38141, 38142,
@@ -58,6 +62,8 @@ local debuffs = {
         },
         [543] = { -- Talon King Ikiss
             12826, 35032,
+            38197, 40425, -- Arcane Explosion (DBM cross-check)
+            38245, 43309, -- Sheep/Polymorph (DBM cross-check)
         },
     },
 

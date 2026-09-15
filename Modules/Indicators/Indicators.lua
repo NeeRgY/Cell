@@ -898,6 +898,10 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
                         indicator:UpdateThresholdsPreview()
                     end
                 end
+                -- update wrap-whole-frame (Border indicator only)
+                if indicator.SetWrapWholeFrame then
+                    indicator:SetWrapWholeFrame(t["wrapWholeFrame"])
+                end
                 -- update textWidth
                 if t["textWidth"] then
                     indicator:UpdateTextWidth(t["textWidth"])
@@ -1293,6 +1297,10 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
             elseif value == "fadeOut" then
                 indicator:SetFadeOut(value2)
                 -- indicator:SetCooldown(GetTime(), 13)
+            elseif value == "wrapWholeFrame" then
+                if indicator.SetWrapWholeFrame then
+                    indicator:SetWrapWholeFrame(value2)
+                end
             elseif value == "durationBar" then
                 if indicator.SetDurationBarPreview then
                     indicator:SetDurationBarPreview(value2, indicator.durationBarPreviewReversed, indicator.durationBarPreviewColor)
@@ -2027,7 +2035,13 @@ if Cell.isRetail or Cell.isMists then
         ["tankActiveMitigation"] = Cell.isMidnight
             and {"warning:"..(L["tankActiveMitigationDisabledApiWarning"] or ""), "|cffb7b7b7"..I.GetTankActiveMitigationString(), "enabled", "color-class", "size", "position", "frameLevel"}
             or {"|cffb7b7b7"..I.GetTankActiveMitigationString(), "enabled", "color-class", "size", "position", "frameLevel"},
-        ["dispels"] = {"enabled", "dispelFilters", "highlightType", "dispelBlacklist", "iconStyle", "orientation", "checkbutton-thickness:showDispelFrameBorder:"..DISPELS_FRAME_BORDER_TOOLTIP, "size-square", "position", "frameLevel"},
+        -- "Highlight Filter (blacklist)" removed for Retail: same reason as Debuffs'
+        -- "enableBlacklistShortcut" above -- Midnight's Secret Aura system hides the
+        -- spell ID for many auras, so there's usually no ID left to actually add to a
+        -- blacklist. Mists keeps it (no Secret Aura there).
+        ["dispels"] = Cell.isRetail
+            and {"enabled", "dispelFilters", "highlightType", "iconStyle", "orientation", "checkbutton-thickness:showDispelFrameBorder:"..DISPELS_FRAME_BORDER_TOOLTIP, "size-square", "position", "frameLevel"}
+            or {"enabled", "dispelFilters", "highlightType", "dispelBlacklist", "iconStyle", "orientation", "checkbutton-thickness:showDispelFrameBorder:"..DISPELS_FRAME_BORDER_TOOLTIP, "size-square", "position", "frameLevel"},
         ["debuffs"] = Cell.isRetail
             and {"enabled", "checkbutton:dispellableByMe", "checkbutton6:nonPlayerAuras:"..(L["nonPlayerAurasTip"] or ""), "checkbutton4:highlightDebuffGlow", midnightDurationVisibility, "animationStyle", "checkbutton5:showStack", "checkbutton3:showTooltip:"..DEBUFFS_TOOLTIP1, "size-square", "num:10", "orientation", "checkbutton-thickness:showDispelBorder:"..DEBUFFS_TOOLTIP3, "position", "frameLevel", "font1:stackFont", midnightDurationFont}
             or {"enabled", "checkbutton:dispellableByMe", "checkbutton6:nonPlayerAuras:"..(L["nonPlayerAurasTip"] or ""), "bigDebuffs", midnightDurationVisibility, "checkbutton2:showAnimation", "checkbutton5:showStack", "checkbutton3:showTooltip:"..DEBUFFS_TOOLTIP1, "checkbutton4:enableBlacklistShortcut:"..DEBUFFS_TOOLTIP2, "size-normal-big", "num:10", "orientation", "checkbutton-thickness:showDispelBorder:"..DEBUFFS_TOOLTIP3, "position", "frameLevel", "font1:stackFont", midnightDurationFont},
@@ -2239,9 +2253,11 @@ local function ShowIndicatorSettings(id)
                 -- rest of the settings list (auras-picker, thickness, frameLevel never show up)
                 indicatorTable["color"] = { 1, 1, 1, 1 }
             end
+            -- checkbutton2 is taken by "trackByName" for buff-type indicators (inserted
+            -- below); reusing it here collides two settings onto the same widget instance.
             settingsTable = Cell.isRetail
-                and {"enabled", "durationBarOptions", "auras-picker", "thickness", "frameLevel:50"}
-                or {"enabled", "checkbutton3:fadeOut", "auras-picker", "thickness", "frameLevel:50"}
+                and {"enabled", "durationBarOptions", "auras-picker", "checkbutton4:wrapWholeFrame", "thickness", "frameLevel:50"}
+                or {"enabled", "checkbutton3:fadeOut", "auras-picker", "checkbutton4:wrapWholeFrame", "thickness", "frameLevel:50"}
         elseif indicatorType == "highlightDebuffs" then
             settingsTable = {"warning:"..(L["bossDebuffsApiWarning"] or ""), "enabled", "highlightDebuffFilters", midnightDurationVisibility, "animationStyle", "checkbutton5:showStack", CELL_RECTANGULAR_CUSTOM_INDICATOR_ICONS and "size" or "size-square", "num:3", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont}
         end

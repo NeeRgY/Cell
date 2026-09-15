@@ -728,6 +728,37 @@ function eventFrame:GROUP_ROSTER_UPDATE()
 end
 
 local inInstance
+
+-- IsInInstance() can briefly return stale/previous-zone data right at PLAYER_ENTERING_WORLD,
+-- especially for PvP/Arena. Re-verify a few times over ~2 seconds after entering an instance
+-- and correct instanceType (+ re-run PreUpdateLayout) if it changed. Every instance type gets
+-- one free recheck; only pvp/arena keeps retrying beyond that.
+local instanceRecheckTries = 0
+local function RecheckInstanceType()
+    if not inInstance then
+        instanceRecheckTries = 0
+        return
+    end
+    instanceRecheckTries = instanceRecheckTries + 1
+    C_Timer.After(0.5, function()
+        if not inInstance then
+            instanceRecheckTries = 0
+            return
+        end
+        local isIn, iType = IsInInstance()
+        if isIn and iType ~= instanceType then
+            F.Debug("|cffff1111*** Instance type corrected:|r", instanceType, "->", iType)
+            instanceType = iType
+            PreUpdateLayout()
+        end
+        if (iType == "pvp" or iType == "arena") and instanceRecheckTries < 5 then
+            RecheckInstanceType()
+        else
+            instanceRecheckTries = 0
+        end
+    end)
+end
+
 function eventFrame:PLAYER_ENTERING_WORLD()
     F.Debug("|cffbbbbbb=== PLAYER_ENTERING_WORLD ===")
 
@@ -739,6 +770,8 @@ function eventFrame:PLAYER_ENTERING_WORLD()
         F.Debug("|cffff1111*** Entered Instance:|r", iType)
         PreUpdateLayout()
         inInstance = true
+        instanceRecheckTries = 0
+        RecheckInstanceType()
 
         -- NOTE: delayed raid difficulty check
         if Cell.vars.groupType == "raid" and iType == "raid" then
@@ -777,6 +810,17 @@ function eventFrame:PLAYER_ENTERING_WORLD()
     end
 end
 
+-- Second, independent trigger for the same instanceType correction as RecheckInstanceType.
+function eventFrame:ZONE_CHANGED_NEW_AREA()
+    if not inInstance then return end
+    local isIn, iType = IsInInstance()
+    if isIn and iType ~= instanceType then
+        F.Debug("|cffff1111*** Instance type corrected (ZONE_CHANGED_NEW_AREA):|r", instanceType, "->", iType)
+        instanceType = iType
+        PreUpdateLayout()
+    end
+end
+
 local function CheckDivineAegis()
     if Cell.vars.playerClass == "PRIEST" then
         local rank = select(5, GetTalentInfo(1, 22))
@@ -811,6 +855,7 @@ function eventFrame:PLAYER_LOGIN()
     eventFrame:RegisterEvent("ACTIVE_TALENT_GROUP_CHANGED")
     eventFrame:RegisterEvent("PLAYER_TALENT_UPDATE")
     eventFrame:RegisterEvent("UI_SCALE_CHANGED")
+    eventFrame:RegisterEvent("ZONE_CHANGED_NEW_AREA")
 
     Cell.vars.playerNameShort = GetUnitName("player")
     Cell.vars.playerNameFull = F.UnitFullName("player")

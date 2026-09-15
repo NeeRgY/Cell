@@ -680,6 +680,14 @@ local function MakeInitDispelAuraButton(cfg, token, unitButton)
         else
             pcall(button.SetSize, button, 0.001, 0.001)
         end
+
+        local st = stateByButton[unitButton]
+        st = st and st["dispels"]
+        if st then
+            st.buttons = st.buttons or setmetatable({}, { __mode = "k" })
+            st.buttons[button] = true
+        end
+
         if not F.InitEngineAuraButtonOnce(button) then
             return
         end
@@ -790,22 +798,27 @@ local function AttachInvisibleCooldown(button)
     return cooldown
 end
 
--- Re-reads the live config on every call instead of only ever using what this closure
--- captured when it was created. Necessary because F.ApplyAuraGroupTuning -- the "retune an
--- already-registered aura group" sync path, taken on every regular resync once a group
--- exists -- never updates the group's initializeFrame callback; only a genuine
--- destroy+AddAuraGroup (a real rebuild, e.g. from a changed park key) does. So a button that
--- gets reused for a LATER aura on an already-registered group kept calling the ORIGINAL,
--- now-stale closure forever -- a size/animation/etc change only ever reached brand-new
--- buttons, never recycled ones (confirmed: "Debuffs" size changes only applied to the next
--- NEW debuff instance, not ones reusing an existing pooled button). HealersAuraDisplay.lua
--- never had this problem because it uses a single static init function reading a shared
--- cachedConfig instead of a fresh closure per build -- same fix, applied here too.
-local function MakeInitAuraButton(cfg, unit, wantBorder, indicatorName)
+-- Re-reads the live config on every call instead of only using what this closure captured
+-- at creation -- F.ApplyAuraGroupTuning (the live retune path) never updates a group's
+-- initializeFrame callback, only a genuine destroy+AddAuraGroup does, so a recycled button
+-- kept calling the original, stale closure otherwise.
+--
+-- st.buttons caches every button this handle has ever dispensed, independent of whether
+-- Blizzard calls initializeFrame on it again. ResizeTrackedButtons sweeps this list directly
+-- on a size change, since Blizzard does not reliably re-fire initializeFrame for an aura that
+-- has stayed continuously active, even after a full container destroy+recreate.
+local function MakeInitAuraButton(cfg, unit, wantBorder, indicatorName, unitButton)
     return function(button)
         cfg = currentConfigs[indicatorName] or cfg
         local sizeW, sizeH = ResolveSize(cfg)
         pcall(button.SetSize, button, sizeW, sizeH)
+
+        local st = stateByButton[unitButton]
+        st = st and st[indicatorName]
+        if st then
+            st.buttons = st.buttons or setmetatable({}, { __mode = "k" })
+            st.buttons[button] = true
+        end
         F.SetupEngineAuraButtonMouse(button, cfg.showTooltip ~= true, cfg)
         if not F.InitEngineAuraButtonOnce(button) then
             if button._cellStackFS then
@@ -1216,6 +1229,7 @@ local function DestroyContainer(st)
     st.container = nil
     st.boundUnit = nil
     st.parkKey = nil
+    st.buttons = nil
     if st.hlContainer then
         F.QuiesceAuraContainer(st.hlContainer)
         st.hlContainer = nil
@@ -1393,7 +1407,7 @@ local function CreateIndicatorContainer(unitButton, indicatorName, cfg, existing
     local unit = ResolveUnit(unitButton) or "player"
     -- Debuff-type border: debuffs only for now, user-configurable (enabled + thickness).
     local wantBorder = indicatorName == "debuffs" and cfg.showDispelBorder ~= false
-    local defaultInitFn = MakeInitAuraButton(cfg, unit, wantBorder, indicatorName)
+    local defaultInitFn = MakeInitAuraButton(cfg, unit, wantBorder, indicatorName, unitButton)
 
     AnchorContainer(container, unitButton, cfg, indicatorName)
 
@@ -1487,10 +1501,11 @@ local function DriveContainer(unitButton, indicatorName, cfg, enable)
     end
 end
 
--- "Show Debuffs on Pet Frames" / "Show Highlight Debuffs on Pet Frames" (Layouts
--- -> Pet). Pet unit buttons are flagged by PetFrame.lua (button.isGroupPet); when
--- the relevant setting is off, treat that indicator for those buttons the same as
--- one with zero groups configured -- no container.
+-- "Show Debuffs on Pet Frames" / "Show Highlight Debuffs on Pet Frames" (Layouts -> Pet).
+-- isAnyGroupPet is set on every pet unit button (attached and detached); isGroupPet only on
+-- detached ones, since it also drives the separate "show owner name" snippet. When the
+-- relevant setting is off, treat that indicator for the button as having no groups -- no
+-- container.
 local PET_HIDE_SETTING_BY_INDICATOR = {
     debuffs = "showDebuffs",
     raidDebuffs = "showRaidDebuffs",
@@ -1498,7 +1513,7 @@ local PET_HIDE_SETTING_BY_INDICATOR = {
 local function IsDebuffsHiddenOnPet(unitButton, indicatorName)
     local settingKey = PET_HIDE_SETTING_BY_INDICATOR[indicatorName]
     if not settingKey then return false end
-    if not (unitButton and unitButton.isGroupPet) then return false end
+    if not (unitButton and unitButton.isAnyGroupPet) then return false end
     local layout = Cell.vars.currentLayoutTable
     return layout and layout["pet"] and layout["pet"][settingKey] == false
 end
@@ -1717,6 +1732,72 @@ local function SyncButton(unitButton, allowCreate)
     end
 end
 
+-- Directly re-applies the current element size to every button st.buttons has tracked,
+-- rather than relying on Blizzard to re-fire initializeFrame for an aura that has stayed
+-- continuously active since the last size change. A plain SetSize on an already-existing
+-- Frame is not a protected operation, so this is safe wherever it's called from; callers
+-- still only run it out of combat to match every other settings-change path in this file.
+local function ResizeTrackedButtons(st, cfg)
+    if not (st and st.buttons and cfg) then return end
+    local sizeW, sizeH = ResolveSize(cfg)
+    for button in pairs(st.buttons) do
+        if button and button.SetSize then
+            pcall(button.SetSize, button, sizeW, sizeH)
+        end
+    end
+end
+
+-- Fully reconciles every tracked combat-aura container with the current config. Used
+-- instead of the async, frame-budgeted I.RefreshAllCombatAuraDisplays() at the two call
+-- sites that are rare, one-off events (a live settings change, or combat just ending)
+-- rather than the routine per-aura-update path -- doing the whole raid synchronously
+-- here is fine.
+--
+-- Debuffs specifically get a full rebuild (destroy the container, recreate it), not a
+-- retune: Blizzard only applies a new element size through initializeFrame, which only
+-- runs for a newly dispensed aura button; a retune leaves whatever's already on screen
+-- at its old size. ResizeTrackedButtons above additionally sweeps every already-active
+-- button directly, since even a rebuild doesn't reliably re-fire initializeFrame for one.
+--
+-- Everything else just gets retuned + bounced: SetAuraGroupLayout/UpdateAllAuras from
+-- addon context only marks a group dirty -- Blizzard doesn't reprocess it until the
+-- group's next genuine aura event. Hide()+Show() crosses into the container's own
+-- secure-side OnShow, which runs UpdateAllAuras from inside the privileged partition and
+-- forces a real reparse. Both operations are combat-illegal, so this must only run OOC.
+local function RefreshAndBounceCombatAuraDisplays()
+    if InCombatLockdown() then return end
+    InvalidateCombatSpellMaps()
+    RefreshCachedLayouts()
+    local debuffsCfg = cachedLayouts and cachedLayouts["debuffs"]
+    F.IterateAllUnitButtons(function(b)
+        if debuffsCfg then
+            local map = stateByButton[b]
+            local st = map and map["debuffs"]
+            if st and st.container then
+                DestroyContainer(st)
+            end
+            if EnsureIndicatorContainer(b, "debuffs", debuffsCfg, true) then
+                DriveContainer(b, "debuffs", debuffsCfg, true)
+            end
+        end
+
+        SyncButton(b, true)
+        local map = stateByButton[b]
+        if map then
+            for name, st in pairs(map) do
+                if name ~= "debuffs" and st.container and st.container:IsShown() then
+                    pcall(function() st.container:Hide(); st.container:Show() end)
+                end
+                -- Belt-and-suspenders for every tracked indicator, "debuffs" included:
+                -- whatever ended up in st.buttons above (old, carried-over, or freshly
+                -- redispensed by the Hide/Show bounce or UpdateAllAuras) gets its size
+                -- forced to the current config directly. See ResizeTrackedButtons.
+                ResizeTrackedButtons(st, cachedLayouts and cachedLayouts[name])
+            end
+        end
+    end, true)
+end
+
 function I.ShouldSkipLegacyCombatAura(indicatorName, unitButton)
     if not ProbeSupported() or not indicatorName then
         return false
@@ -1840,7 +1921,16 @@ if SUPPORTED then
             and not tostring(indicatorName):find("^indicator") then
             return
         end
-        C_Timer.After(0, I.RefreshAllCombatAuraDisplays)
+        if InCombatLockdown() then
+            -- Never re-tune a live AuraContainer mid-combat: applying it now would only
+            -- mark groups dirty without a real re-layout until their next incidental aura
+            -- event -- exactly the "icons drift into gaps/overlaps" bug this is fixing.
+            -- Mark it pending and let the PLAYER_REGEN_ENABLED catch-up below apply the
+            -- real, un-deferred version once combat ends.
+            needsCombatCatchup = true
+            return
+        end
+        C_Timer.After(0, RefreshAndBounceCombatAuraDisplays)
     end)
 
     Cell.RegisterCallback("UpdateLayout", "CombatAuraDisplay_UpdateLayout", function()
@@ -1915,7 +2005,7 @@ if SUPPORTED then
         -- hitch scaled with how much happened during the fight.
         if needsCombatCatchup then
             needsCombatCatchup = false
-            I.RefreshAllCombatAuraDisplays()
+            RefreshAndBounceCombatAuraDisplays()
         end
     end)
 end

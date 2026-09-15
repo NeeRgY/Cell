@@ -151,11 +151,7 @@ local function ResetIndicators()
     for _, t in pairs(Cell.vars.currentLayoutTable["indicators"]) do
         -- update enabled
         if t["enabled"] then
-            if t["indicatorName"] == "powerWordShield" then
-                enabledIndicators[t["indicatorName"]] = Cell.vars.playerClass == "PRIEST"
-            else
-                enabledIndicators[t["indicatorName"]] = true
-            end
+            enabledIndicators[t["indicatorName"]] = true
         end
         -- update num
         if t["num"] then
@@ -292,6 +288,10 @@ local function HandleIndicators(b)
             else
                 indicator:SetThickness(t["thickness"])
             end
+        end
+        -- update wrap-whole-frame (Border indicator only)
+        if indicator.SetWrapWholeFrame then
+            indicator:SetWrapWholeFrame(t["wrapWholeFrame"])
         end
         -- update border
         if t["border"] and indicator.SetBorder then
@@ -1061,6 +1061,13 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
                     BD(b).indicators[indicatorName]:SetFadeOut(value2)
                     UnitButton_UpdateAuras(b)
                 end, true)
+            elseif value == "wrapWholeFrame" then
+                F.IterateAllUnitButtons(function(b)
+                    local ind = BD(b).indicators[indicatorName]
+                    if ind and ind.SetWrapWholeFrame then
+                        ind:SetWrapWholeFrame(value2)
+                    end
+                end, true)
             elseif value == "smooth" then
                 F.IterateAllUnitButtons(function(b)
                     if not BD(b).indicators[indicatorName] then return end
@@ -1347,9 +1354,9 @@ local function UnitButton_UpdateDebuffs(self)
     end
 
     -- update raid debuffs
-    -- "Show Raid Debuffs on Pet Frames" (Layouts -> Pet, labeled per-flavor): pet
-    -- unit buttons are flagged by PetFrame.lua (self.isGroupPet).
-    if raidDebuffsFound and not (self.isGroupPet
+    -- "Show Raid Debuffs on Pet Frames" (Layouts -> Pet, labeled per-flavor): pet unit buttons
+    -- are flagged isAnyGroupPet by both PetFrame.lua (detached) and PartyFrame.lua (attached).
+    if raidDebuffsFound and not (self.isAnyGroupPet
         and Cell.vars.currentLayoutTable["pet"]["showRaidDebuffs"] == false) then
         startIndex = 1
         BD(self).indicators.raidDebuffs:Show()
@@ -1422,11 +1429,11 @@ local function UnitButton_UpdateDebuffs(self)
 
     -- update debuffs
     startIndex = 1
-    -- "Show Debuffs on Pet Frames" (Layouts -> Pet): pet unit buttons are flagged by
-    -- PetFrame.lua (self.isGroupPet). When off, skip populating this indicator for
-    -- them the same way disabling it does -- startIndex stays 1, so the UpdateSize
-    -- call below hides all of the indicator's icons.
-    if enabledIndicators["debuffs"] and not (self.isGroupPet
+    -- "Show Debuffs on Pet Frames" (Layouts -> Pet): pet unit buttons are flagged
+    -- isAnyGroupPet by both PetFrame.lua (detached) and PartyFrame.lua (attached). When off,
+    -- skip populating this indicator for them the same way disabling it does -- startIndex
+    -- stays 1, so the UpdateSize call below hides all of the indicator's icons.
+    if enabledIndicators["debuffs"] and not (self.isAnyGroupPet
         and Cell.vars.currentLayoutTable["pet"]["showDebuffs"] == false) then
         -- bigDebuffs first
         for debuffIndex, refreshing in pairs(BD(self)._debuffs_big) do

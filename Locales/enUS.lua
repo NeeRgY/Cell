@@ -110,6 +110,7 @@ select(2, ...).L = setmetatable({
     ["stackFont"] = "Stack Font",
     ["durationFont"] = "Duration Font",
     ["fadeOut"] = "Fade out over time",
+    ["wrapWholeFrame"] = "Wrap whole frame",
     ["shieldByMe"] = "Only show PW:S cast by me",
     ["onlyShowOvershields"] = "Only show overshields",
     ["targetedSpellsGlowEnabled"] = "Enable Glow",
@@ -161,6 +162,19 @@ select(2, ...).L = setmetatable({
     ["BACKUP_TIPS2"] = "Note for Classic players: Backups do not include Click-Castings and Layout Auto Switch of other characters",
     ["CHANGELOGS"] = [[
 
+
+        <h1>r277.9.8.7 - NeRgY</h1>
+        <h2>Retail</h2>
+        <p>* Added 12.1.5 to the .toc's supported Interface versions.</p>
+        <p>* "Debuffs" icons should now properly resize even while a debuff has stayed active continuously across the size change.</p>
+        <p>* Fixed "Show Debuffs on Pet Frames" / "Show Highlight Debuffs on Pet Frames" not being respected by pets shown attached to their owner (only the detached pet frames obeyed it before).</p>
+        <p>* Added a "Wrap whole frame" checkbox to the custom "Border" indicator, to go back to wrapping the entire unit frame instead of just the health bar.</p>
+        <h2>Classic / TBC</h2>
+        <p>* Corrected a few more Burning Crusade Raid Debuffs entries (Illidan, Lady Vashj, Kael'thas Sunstrider, Exarch Maladaar, Pandemonius, Talon King Ikiss, Sethekk Halls trash).</p>
+        <p>* Added a "Wrap whole frame" checkbox to the custom "Border" indicator, to go back to wrapping the entire unit frame instead of just the health bar.</p>
+        <h2>MoP</h2>
+        <p>* Fixed some indicators only working if you were a specific class yourself, regardless of who actually had the effect active.</p>
+        <br/>
 
         <h1>r277.9.8.6 - NeRgY</h1>
         <h2>Retail</h2>

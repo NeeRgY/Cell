@@ -675,8 +675,11 @@ local function MakeInitBorderButton(cfg, unitButton)
         local r, g, b, a = GetBorderColor(cfg)
 
         -- Anchored to the health bar, not the whole unit frame, so it doesn't wrap
-        -- the power bar too (same reasoning as the Dispels border/overlay fix).
-        local anchorFrame = (F.BD(unitButton).widgets and F.BD(unitButton).widgets.healthBar) or unitButton
+        -- the power bar too (same reasoning as the Dispels border/overlay fix) -- unless the
+        -- user opted into wrapping the whole frame via the "Wrap whole frame" checkbox.
+        -- cfg.wrapWholeFrame is stamped into MakeParkKey, so toggling it forces a full
+        -- container rebuild and this closure re-runs for every currently-shown button too.
+        local anchorFrame = (not cfg.wrapWholeFrame and F.BD(unitButton).widgets and F.BD(unitButton).widgets.healthBar) or unitButton
 
         local tex = button:CreateTexture(nil, "ARTWORK", nil, 3)
         tex:SetTexture(Cell.vars.whiteTexture)
@@ -1104,6 +1107,7 @@ local function MakeParkKey(cfg)
         cfg._durationBarGen,
         cfg.texture,
         cfg.thickness,
+        cfg.wrapWholeFrame,
         -- NOTE: the widget writes to cfg.orientation (its settingsTable key "barOrientation" gets
         -- remapped to "orientation" before saving -- see Indicators.lua), and MakeInitBarButton
         -- below reads cfg.orientation too. cfg.barOrientation itself is never actually written by

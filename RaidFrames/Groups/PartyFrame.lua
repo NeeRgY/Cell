@@ -91,6 +91,11 @@ for i, playerButton in ipairs(header) do
     -- petButton.type = "pet" -- layout setup
     petButton:SetIgnoreParentAlpha(true)
 
+    -- Lets "Show Debuffs on Pet Frames" (Layouts -> Pet) gate debuffs/raidDebuffs for this
+    -- attached pet too. Separate from PetFrame.lua's isGroupPet, which also drives the
+    -- detached-only "show owner name" snippet.
+    petButton.isAnyGroupPet = true
+
     --! button for pet/vehicle only, toggleForVehicle MUST be false
     petButton:SetAttribute("toggleForVehicle", false)
 

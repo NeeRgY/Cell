@@ -721,17 +721,52 @@ function eventFrame:GROUP_ROSTER_UPDATE()
 end
 
 local inInstance
+
+-- IsInInstance() can briefly return stale/previous-zone data right at PLAYER_ENTERING_WORLD,
+-- especially for PvP/Arena. Re-verify a few times over ~2 seconds after entering an instance
+-- and correct instanceType (+ re-run PreUpdateLayout) if it changed. Every instance type gets
+-- one free recheck; only pvp/arena keeps retrying beyond that.
+local instanceRecheckTries = 0
+local function RecheckInstanceType()
+    if not inInstance then
+        instanceRecheckTries = 0
+        return
+    end
+    instanceRecheckTries = instanceRecheckTries + 1
+    C_Timer.After(0.5, function()
+        if not inInstance then
+            instanceRecheckTries = 0
+            return
+        end
+        local isIn, iType = IsInInstance()
+        if isIn and iType ~= instanceType then
+            F.Debug("|cffff1111*** Instance type corrected:|r", instanceType, "->", iType)
+            instanceType = iType
+            Cell.vars.instanceType = iType
+            PreUpdateLayout()
+        end
+        if (iType == "pvp" or iType == "arena") and instanceRecheckTries < 5 then
+            RecheckInstanceType()
+        else
+            instanceRecheckTries = 0
+        end
+    end)
+end
+
 function eventFrame:PLAYER_ENTERING_WORLD()
     F.Debug("|cffbbbbbb=== PLAYER_ENTERING_WORLD ===")
 
     local isIn, iType = IsInInstance()
     instanceType = iType
     Cell.vars.inInstance = isIn
+    Cell.vars.instanceType = iType
 
     if isIn then
         F.Debug("|cffff1111*** Entered Instance:|r", iType)
         PreUpdateLayout()
         inInstance = true
+        instanceRecheckTries = 0
+        RecheckInstanceType()
     elseif inInstance then -- left insntance
         F.Debug("|cffff1111*** Left Instance|r")
         PreUpdateLayout()
@@ -748,6 +783,18 @@ function eventFrame:PLAYER_ENTERING_WORLD()
     end
 end
 
+-- Second, independent trigger for the same instanceType correction as RecheckInstanceType.
+function eventFrame:ZONE_CHANGED_NEW_AREA()
+    if not inInstance then return end
+    local isIn, iType = IsInInstance()
+    if isIn and iType ~= instanceType then
+        F.Debug("|cffff1111*** Instance type corrected (ZONE_CHANGED_NEW_AREA):|r", instanceType, "->", iType)
+        instanceType = iType
+        Cell.vars.instanceType = iType
+        PreUpdateLayout()
+    end
+end
+
 local function UpdateSpecVars(skipTalentUpdate)
     -- if not skipTalentUpdate then
         Cell.vars.activeTalentGroup = GetActiveTalentGroup()
@@ -759,6 +806,7 @@ function eventFrame:PLAYER_LOGIN()
     F.Debug("|cffbbbbbb=== PLAYER_LOGIN ===")
     eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
     eventFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
+    eventFrame:RegisterEvent("ZONE_CHANGED_NEW_AREA")
     if GetNumTalentGroups() == 2 then -- check if dualspec is active, if yes register talent swap event
         eventFrame:RegisterEvent("ACTIVE_TALENT_GROUP_CHANGED")
         eventFrame:RegisterEvent("PLAYER_TALENT_UPDATE")

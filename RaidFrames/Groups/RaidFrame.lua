@@ -198,6 +198,8 @@ local arenaPetButtons = {}
 for i = 1, (Cell.isRetail and 3 or 5) do
     arenaPetButtons[i] = CreateFrame("Button", "CellArenaPet"..i, raidFrame, "CellUnitButtonTemplate")
     arenaPetButtons[i]:SetAttribute("unit", "raidpet"..i)
+    -- Lets "Show Debuffs on Pet Frames" (Layouts -> Pet) gate this pet too.
+    arenaPetButtons[i].isAnyGroupPet = true
 
     Cell.unitButtons.arena["raidpet"..i] = arenaPetButtons[i]
 end

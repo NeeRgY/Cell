@@ -95,6 +95,8 @@ function header:UpdateButtonUnit(bName, unit)
     if not unit then return end
     Cell.unitButtons.pet.units[unit] = _G[bName]
     _G[bName].isGroupPet = true
+    -- see PartyFrame.lua's attached pet button for why this is a separate flag from isGroupPet
+    _G[bName].isAnyGroupPet = true
 end
 
 header:SetAttribute("_initialAttributeNames", "refreshUnitChange")

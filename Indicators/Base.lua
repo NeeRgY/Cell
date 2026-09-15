@@ -3006,25 +3006,32 @@ local function Border_SetThickness(border, thickness)
     P.Point(border.mask2, "BOTTOMRIGHT", -thickness-CELL_BORDER_SIZE, thickness+CELL_BORDER_SIZE)
 end
 
-function I.CreateAura_Border(name, parent)
-    local border = CreateFrame("Frame", name, parent)
-    border:Hide()
-    border.indicatorType = "border"
+-- parent is widgets.highLevelFrame, a direct child of the actual unit button (see
+-- UnitButton.lua) -- walk back up to it to anchor against the health bar instead of the
+-- whole frame, so the border doesn't wrap the power bar too (same reasoning as the Dispels
+-- border/overlay fix). "wholeFrame" lets the user opt back into wrapping the entire frame.
+local function Border_SetWrapWholeFrame(border, wholeFrame)
+    border._wrapWholeFrame = wholeFrame and true or false
 
-    -- parent is widgets.highLevelFrame, a direct child of the actual unit button
-    -- (see UnitButton.lua) -- walk back up to it to anchor against the health bar
-    -- instead of the whole frame, so the border doesn't wrap the power bar too
-    -- (same reasoning as the Dispels border/overlay fix).
-    local unitButton = parent:GetParent()
-    local healthBar = unitButton and F.BD(unitButton).widgets and F.BD(unitButton).widgets.healthBar
+    local unitButton = border:GetParent():GetParent()
+    local healthBar = not border._wrapWholeFrame and unitButton and F.BD(unitButton).widgets and F.BD(unitButton).widgets.healthBar
+
+    border:ClearAllPoints()
     if healthBar then
-        border:ClearAllPoints()
         P.Point(border, "TOPLEFT", healthBar, CELL_BORDER_SIZE, -CELL_BORDER_SIZE)
         P.Point(border, "BOTTOMRIGHT", healthBar, -CELL_BORDER_SIZE, CELL_BORDER_SIZE)
     else
         P.Point(border, "TOPLEFT", CELL_BORDER_SIZE, -CELL_BORDER_SIZE)
         P.Point(border, "BOTTOMRIGHT", -CELL_BORDER_SIZE, CELL_BORDER_SIZE)
     end
+end
+
+function I.CreateAura_Border(name, parent)
+    local border = CreateFrame("Frame", name, parent)
+    border:Hide()
+    border.indicatorType = "border"
+
+    Border_SetWrapWholeFrame(border, false)
 
     local mask = border:CreateMaskTexture()
     border.mask = mask
@@ -3049,6 +3056,7 @@ function I.CreateAura_Border(name, parent)
     border.SetFadeOut = Border_SetFadeOut
     border.SetDurationBarPreview = Border_SetDurationBarPreview
     border.SetThickness = Border_SetThickness
+    border.SetWrapWholeFrame = Border_SetWrapWholeFrame
     border.UpdatePixelPerfect = Border_UpdatePixelPerfect
 
     return border
