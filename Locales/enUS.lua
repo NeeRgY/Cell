@@ -163,6 +163,12 @@ select(2, ...).L = setmetatable({
     ["CHANGELOGS"] = [[
 
 
+        <h1>r277.9.8.8 - NeRgY</h1>
+        <h2>Retail</h2>
+        <p>* Fixed an error that could spam when using the raid marker icons in PvP arenas.</p>
+        <p>* Fixed party/raid frames briefly showing in the wrong spot for a moment when entering or leaving an Arena.</p>
+        <br/>
+
         <h1>r277.9.8.7 - NeRgY</h1>
         <h2>Retail</h2>
         <p>* Added 12.1.5 to the .toc's supported Interface versions.</p>

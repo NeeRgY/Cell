@@ -812,6 +812,32 @@ local function RecheckInstanceType()
     end)
 end
 
+-- Cell.vars.groupType can lag ~1s behind entering/leaving an arena: IsInRaid()/IsInGroup()
+-- (checked via GROUP_ROSTER_UPDATE) don't reflect the arena's raid-conversion immediately,
+-- so PartyFrame/RaidFrame briefly apply the wrong layout to the wrong frame right after
+-- PLAYER_ENTERING_WORLD, until the real GROUP_ROSTER_UPDATE event eventually corrects it.
+-- Re-verify a few times over ~2 seconds, same pattern as RecheckInstanceType above.
+local groupTypeRecheckTries = 0
+local function RecheckGroupType()
+    if not inInstance then
+        groupTypeRecheckTries = 0
+        return
+    end
+    groupTypeRecheckTries = groupTypeRecheckTries + 1
+    C_Timer.After(0.5, function()
+        if not inInstance then
+            groupTypeRecheckTries = 0
+            return
+        end
+        eventFrame:GROUP_ROSTER_UPDATE()
+        if (instanceType == "pvp" or instanceType == "arena") and groupTypeRecheckTries < 5 then
+            RecheckGroupType()
+        else
+            groupTypeRecheckTries = 0
+        end
+    end)
+end
+
 function eventFrame:PLAYER_ENTERING_WORLD()
     -- eventFrame:UnregisterEvent("PLAYER_ENTERING_WORLD")
     F.Debug("|cffbbbbbb=== PLAYER_ENTERING_WORLD ===")
@@ -828,6 +854,8 @@ function eventFrame:PLAYER_ENTERING_WORLD()
         inInstance = true
         instanceRecheckTries = 0
         RecheckInstanceType()
+        groupTypeRecheckTries = 0
+        RecheckGroupType()
 
         -- NOTE: delayed check mythic raid
         if iType == "raid" then
@@ -850,6 +878,9 @@ function eventFrame:PLAYER_ENTERING_WORLD()
         Cell.Fire("LeaveInstance")
         PreUpdateLayout()
         inInstance = false
+        -- groupType can still briefly report the arena's raid conversion right after leaving --
+        -- one-shot recheck, same reasoning as RecheckGroupType (which requires inInstance).
+        C_Timer.After(0.5, function() eventFrame:GROUP_ROSTER_UPDATE() end)
 
         if not InCombatLockdown() and not UnitAffectingCombat("player") then
             F.Debug("|cffbbbbbb--- LeftInstance: |cffff7777collectgarbage")

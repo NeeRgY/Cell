@@ -222,7 +222,10 @@ local worldMarksTimer
 worldMarks:SetScript("OnShow", function()
     worldMarksTimer = C_Timer.NewTicker(0.5, function()
         for i = 1, 8 do
-            if IsRaidMarkerActive(worldMarkIndices[i]) then
+            -- IsRaidMarkerActive can return a secret boolean (e.g. Training Grounds Random
+            -- Arenas), which can't be used in a boolean test -- treat it as "not active".
+            local active = IsRaidMarkerActive(worldMarkIndices[i])
+            if F.IsValueNonSecret(active) and active then
                 worldMarkButtons[i]:SetBackdropBorderColor(markColors[i][1], markColors[i][2], markColors[i][3], 1)
             else
                 worldMarkButtons[i]:SetBackdropBorderColor(0, 0, 0, 1)
