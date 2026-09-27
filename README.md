@@ -78,47 +78,8 @@ Without their work, this fork would not exist.
 | Classic Era / Hardcore (`1.15.9`) | Supported |
 | TBC Classic (Anniversary) (`2.5.6`) | Supported |
 | MoP Classic (`5.5.4`) | Supported |
+| Forever (`1.60.1`) | Supported |
 | Wotlk / Cata  | TOC present; not the main focus of this branch |
-
----
-
-## NeRgY Fork Highlights
-
-### Retail / Midnight
-
-- **Hide Blizzard Party / Raid:** more stable, fewer errors in raids and alongside other addons
-- **Solo power bars:** fixed a rare update error
-- **Bar Animation → Smooth restored:** health and power bars animate smoothly again (Legacy stays immediate)
-- **Out of Range Alpha:** frames correctly fade when out of range again (Retail + Classic)
-- Built on Krysio's Midnight foundation (Secret Aura Fingerprint, HandleBuff, Aura Blacklist, Midnight Tools, Locale Override, Comm guards, Private Dispel work)
-- Extra aura helpers (`Utils_Auras`) for safer timing/stacks/meta binding
-- Party utilities updated for 12.0.7+ (`C_PartyInfo` ready check / role poll)
-- **Indicators → Actions:** Midnight potion defaults  
-  - Silvermoon Health Potion  
-  - Light's Potential  
-  - Existing profiles migrated automatically
-- **Raid Debuffs:** Season 1 raids verified/updated  
-  - The Voidspire  
-  - The Dreamrift  
-  - March on Quel'Danas  
-  - Sporefall (Rotmire)
-
-### Classic Era / TBC
-
-- Clearer profile Import UX (errors, whitespace stripping, chat feedback)
-- About Import moved up; Layouts Import warns on full-profile strings
-- Fixed Import/About crashes when addon version metadata is missing
-- **Out of Range Alpha fixed:** frames correctly fade when out of range again
-
-### Options & UX
-
-- Cell page under **Esc → Options → AddOns** (icon, version, credits, Open Options)
-- Minimap button (left-click opens options, drag to move; toggle under General)
-
-### Known limitations (Blizzard API)
-
-- **Targeted Spells** remain internally disabled (same as Krysio)
-- **Raid Debuffs** still work for **readable** spell IDs; true Private/Secret auras need the Private Auras indicator
 
 ---
 
@@ -196,7 +157,7 @@ This fork may:
 # Roadmap
 
 - Keep Midnight raid frames stable across patches
-- If everything works well, create a version for Season 2 (Patch 12.1.0).
+- Keep cell working for wow Forever
 - Continue Classic / TBC support
 - Refresh Raid Debuffs when new encounters/patches land
 - More QoL updates
