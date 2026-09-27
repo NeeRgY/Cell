@@ -1,0 +1,12 @@
+<Ui xmlns="http://www.blizzard.com/wow/ui/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.blizzard.com/wow/ui/ https://raw.githubusercontent.com/Gethe/wow-ui-source/live/Interface/AddOns/Blizzard_SharedXML/UI.xsd">
+    <Font name="CELL_FONT_WIDGET_TITLE" inherits="GameFontNormal" virtual="true"/>
+    <Font name="CELL_FONT_WIDGET_TITLE_DISABLE" inherits="GameFontDisable" virtual="true"/>
+    <Font name="CELL_FONT_WIDGET" inherits="GameFontHighlight" virtual="true"/>
+    <Font name="CELL_FONT_WIDGET_SMALL" inherits="GameFontHighlightSmall" virtual="true"/>
+    <Font name="CELL_FONT_WIDGET_DISABLE" inherits="GameFontDisable" virtual="true"/>
+    <Font name="CELL_FONT_CHINESE" inherits="GameFontNormal" virtual="true"/>
+    <Font name="CELL_FONT_SPECIAL" inherits="GameFontNormal" virtual="true"/>
+    <Font name="CELL_FONT_CLASS_TITLE" inherits="GameFontNormal" virtual="true"/>
+    <Font name="CELL_FONT_CLASS" inherits="GameFontHighlight" virtual="true"/>
+</Ui>

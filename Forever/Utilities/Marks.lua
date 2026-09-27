@@ -1,0 +1,421 @@
+local _, Cell = ...
+local L = Cell.L
+local F = Cell.funcs
+local P = Cell.pixelPerfectFuncs
+local A = Cell.animations
+
+local marks, worldMarks
+
+local marksFrame = CreateFrame("Frame", "CellRaidMarksFrame", Cell.frames.mainFrame, "SecureFrameTemplate,BackdropTemplate")
+Cell.frames.raidMarksFrame = marksFrame
+marksFrame:SetSize(196, 40)
+PixelUtil.SetPoint(marksFrame, "BOTTOMRIGHT", CellParent, "CENTER", -1, 1)
+marksFrame:SetClampedToScreen(true)
+marksFrame:SetMovable(true)
+marksFrame:RegisterForDrag("LeftButton")
+marksFrame:SetScript("OnDragStart", function()
+    marksFrame:StartMoving()
+    marksFrame:SetUserPlaced(false)
+end)
+marksFrame:SetScript("OnDragStop", function()
+    marksFrame:StopMovingOrSizing()
+    P.SavePosition(marksFrame, CellDB["tools"]["marks"][4])
+end)
+
+-------------------------------------------------
+-- mover
+-------------------------------------------------
+marksFrame.moverText = marksFrame:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET")
+marksFrame.moverText:SetPoint("TOP", 0, -3)
+marksFrame.moverText:SetText(L["Mover"])
+marksFrame.moverText:Hide()
+
+local function ShowMover(show)
+    if show then
+        if not CellDB["tools"]["marks"][1] then return end
+        marksFrame:EnableMouse(true)
+        marksFrame.moverText:Show()
+        Cell.StylizeFrame(marksFrame, {0, 1, 0, 0.4}, {0, 0, 0, 0})
+        if not F.HasPermission(true) then -- button not shown
+            if strfind(CellDB["tools"]["marks"][3], "^target") then
+                marks:Show()
+            elseif strfind(CellDB["tools"]["marks"][3], "^world") then
+                worldMarks:Show()
+            else
+                marks:Show()
+                worldMarks:Show()
+            end
+        end
+        marksFrame:SetAlpha(1)
+    else
+        marksFrame:EnableMouse(false)
+        marksFrame.moverText:Hide()
+        Cell.StylizeFrame(marksFrame, {0, 0, 0, 0}, {0, 0, 0, 0})
+        if not F.HasPermission(true) then -- button should not shown
+            if not (Cell.vars.groupType == "solo" and CellDB["tools"]["marks"][2]) then
+                marks:Hide()
+            end
+            worldMarks:Hide()
+        end
+        marksFrame:SetAlpha(CellDB["tools"]["fadeOut"] and 0 or 1)
+    end
+end
+Cell.RegisterCallback("ShowMover", "RaidMarks_ShowMover", ShowMover)
+
+-------------------------------------------------
+-- colors
+-------------------------------------------------
+local markColors = {
+    {1, 1, 0}, -- star
+    {1, 0.5, 0}, -- circle
+    {0.5, 0, 1}, -- diamond
+    {0, 1, 0.2}, -- triangle
+    {0.5, 0.5, 0.5}, -- moon
+    {0, 0.5, 1}, -- square
+    {1, 0, 0}, -- cross
+    {1, 1, 1}, -- skull
+    {1, 0.19, 0.19}, -- clear
+}
+
+-------------------------------------------------
+-- marks
+-------------------------------------------------
+marks = Cell.CreateFrame("CellRaidMarksFrame_Marks", marksFrame, 196, 20, true)
+marks:SetPoint("BOTTOMLEFT")
+marks:Hide()
+
+local markButtons = {}
+for i = 1, 9 do
+    markButtons[i] = Cell.CreateButton(marks, "", "accent-hover", {20, 20}, false, false, nil, nil, "SecureActionButtonTemplate")
+    markButtons[i]:RegisterForClicks("LeftButtonUp", "RightButtonUp", "LeftButtonDown", "RightButtonDown")
+    markButtons[i].texture = markButtons[i]:CreateTexture(nil, "ARTWORK")
+    P.Point(markButtons[i].texture, "TOPLEFT", markButtons[i], "TOPLEFT", 2, -2)
+    P.Point(markButtons[i].texture, "BOTTOMRIGHT", markButtons[i], "BOTTOMRIGHT", -2, 2)
+
+    if i == 9 then
+        markButtons[i].texture:SetTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Up")
+        markButtons[i]:SetAttribute("type", "macro")
+        markButtons[i]:SetAttribute("macrotext", "/tm 0")
+    else
+        markButtons[i].texture:SetTexture("Interface\\TargetingFrame\\UI-RaidTargetingIcons")
+        SetRaidTargetIconTexture(markButtons[i].texture, i)
+        markButtons[i]:SetAttribute("type1", "macro")
+        markButtons[i]:SetAttribute("macrotext1", "/tm " .. i)
+        markButtons[i]:SetAttribute("type2", "macro")
+        markButtons[i]:SetAttribute("macrotext2", "/tm " .. i)
+
+        markButtons[i]:HookScript("PreClick", function(self, button)
+            if InCombatLockdown() then return end
+            if button == "LeftButton" then
+                local hasMark = false
+                local ok, current = pcall(GetRaidTargetIndex, "target")
+                if ok then
+                    local okEq, matches = pcall(function() return current == i end)
+                    hasMark = okEq and matches
+                end
+                self:SetAttribute("macrotext1", hasMark and "/tm 0" or ("/tm " .. i))
+            elseif button == "RightButton" then
+                local unit, name, class = F.GetTargetUnitInfo()
+                if not unit or not name then return end
+                if self.locked then
+                    F.NotifyMarkUnlock(i, name, class)
+                    self:SetAttribute("macrotext2", "/tm [@" .. self.locked .. "] 0")
+                    self:SetBackdropBorderColor(0, 0, 0, 1)
+                    self.locked = nil
+                    if self.ticker then
+                        self.ticker:Cancel()
+                        self.ticker = nil
+                    end
+                else
+                    F.NotifyMarkLock(i, name, class)
+                    self:SetAttribute("macrotext2", "/tm [@" .. unit .. "] " .. i)
+                    self:SetBackdropBorderColor(markColors[i][1], markColors[i][2], markColors[i][3], 1)
+                    self.locked = unit
+                    self.ticker = C_Timer.NewTicker(1.5, function()
+                        if UnitName(unit) ~= name then
+                            self.locked = nil
+                            if self.ticker then
+                                self.ticker:Cancel()
+                                self.ticker = nil
+                            end
+                            self:SetBackdropBorderColor(0, 0, 0, 1)
+                        end
+                    end)
+                end
+            end
+        end)
+
+        markButtons[i]:HookScript("PostClick", function(self)
+            if InCombatLockdown() then return end
+            self:SetAttribute("macrotext1", "/tm " .. i)
+            self:SetAttribute("macrotext2", "/tm " .. i)
+        end)
+    end
+
+    markButtons[i].bg:SetColorTexture(0.1, 0.1, 0.1, 0.7)
+    markButtons[i]:SetBackdropColor(0, 0, 0, 0)
+    markButtons[i].color = {0, 0, 0, 0}
+    markButtons[i].hoverColor = {markColors[i][1], markColors[i][2], markColors[i][3], 0.35}
+
+    -- if i == 1 then
+    --     P.Point(markButtons[i], "TOPLEFT")
+    -- else
+    --     P.Point(markButtons[i], "LEFT", markButtons[i-1], "RIGHT", 2, 0)
+    -- end
+end
+
+marks:SetScript("OnHide", function()
+    for i = 1, 8 do
+        markButtons[i].locked = nil
+        if markButtons[i].ticker then
+            markButtons[i].ticker:Cancel()
+            markButtons[i].ticker = nil
+        end
+        markButtons[i]:SetBackdropBorderColor(0, 0, 0, 1)
+    end
+end)
+
+-------------------------------------------------
+-- world marks
+-------------------------------------------------
+worldMarks = Cell.CreateFrame("CellRaidMarksFrame_WorldMarks", marksFrame, 196, 20, true)
+worldMarks:SetPoint("BOTTOMLEFT")
+worldMarks:Hide()
+
+local worldMarkIndices = {5, 6, 3, 2, 7, 1, 4, 8}
+local worldMarkButtons = {}
+for i = 1, 9 do
+    worldMarkButtons[i] = Cell.CreateButton(worldMarks, "", "accent-hover", {20, 20}, false, false, nil, nil, "SecureActionButtonTemplate")
+    worldMarkButtons[i]:RegisterForClicks("LeftButtonUp", "LeftButtonDown") -- NOTE: ActionButtonUseKeyDown will affect this
+    worldMarkButtons[i].texture = worldMarkButtons[i]:CreateTexture(nil, "ARTWORK")
+
+    if i == 9 then
+        -- clear all marks
+        P.Point(worldMarkButtons[i].texture, "TOPLEFT", worldMarkButtons[i], "TOPLEFT", 2, -2)
+        P.Point(worldMarkButtons[i].texture, "BOTTOMRIGHT", worldMarkButtons[i], "BOTTOMRIGHT", -2, 2)
+        worldMarkButtons[i].texture:SetTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Up")
+        worldMarkButtons[i]:SetAttribute("type", "worldmarker")
+        worldMarkButtons[i]:SetAttribute("action", "clear")
+    else
+        P.Point(worldMarkButtons[i].texture, "TOPLEFT", worldMarkButtons[i], "TOPLEFT", 1, -1)
+        P.Point(worldMarkButtons[i].texture, "BOTTOMRIGHT", worldMarkButtons[i], "BOTTOMRIGHT", -1, 1)
+        worldMarkButtons[i].texture:SetColorTexture(markColors[i][1], markColors[i][2], markColors[i][3], 0.4)
+        worldMarkButtons[i]:SetAttribute("type", "worldmarker")
+        worldMarkButtons[i]:SetAttribute("marker", worldMarkIndices[i])
+        -- worldMarkButtons[i]:SetAttribute("type", "macro")
+        -- worldMarkButtons[i]:SetAttribute("macrotext", "/wm "..worldMarkIndices[i])
+    end
+
+    worldMarkButtons[i].bg:SetColorTexture(0.1, 0.1, 0.1, 0.7)
+    worldMarkButtons[i]:SetBackdropColor(0, 0, 0, 0)
+    worldMarkButtons[i].color = {0, 0, 0, 0}
+    worldMarkButtons[i].hoverColor = {markColors[i][1], markColors[i][2], markColors[i][3], 0.35}
+
+    -- if i == 1 then
+    --     P.Point(worldMarkButtons[i], "TOPLEFT")
+    -- else
+    --     P.Point(worldMarkButtons[i], "LEFT", worldMarkButtons[i-1], "RIGHT", 2, 0)
+    -- end
+end
+
+local worldMarksTimer
+worldMarks:SetScript("OnShow", function()
+    worldMarksTimer = C_Timer.NewTicker(0.5, function()
+        for i = 1, 8 do
+            -- IsRaidMarkerActive can return a secret boolean (e.g. Training Grounds Random
+            -- Arenas), which can't be used in a boolean test -- treat it as "not active".
+            local active = IsRaidMarkerActive(worldMarkIndices[i])
+            if F.IsValueNonSecret(active) and active then
+                worldMarkButtons[i]:SetBackdropBorderColor(markColors[i][1], markColors[i][2], markColors[i][3], 1)
+            else
+                worldMarkButtons[i]:SetBackdropBorderColor(0, 0, 0, 1)
+            end
+        end
+    end)
+end)
+worldMarks:SetScript("OnHide", function()
+    if worldMarksTimer then
+        worldMarksTimer:Cancel()
+        worldMarksTimer = nil
+    end
+end)
+
+-------------------------------------------------
+-- fade out
+-------------------------------------------------
+local buttons = {}
+for _, b in pairs(markButtons) do
+    tinsert(buttons, b)
+end
+for _, b in pairs(worldMarkButtons) do
+    tinsert(buttons, b)
+end
+A.ApplyFadeInOutToParent(marksFrame, function()
+    return CellDB["tools"]["fadeOut"] and not marksFrame.moverText:IsShown()
+end, unpack(buttons))
+
+-------------------------------------------------
+-- functions
+-------------------------------------------------
+local function Rearrange(marksConfig)
+    local scaled20 = P.Scale(20)
+
+    if strfind(marksConfig, "_h$") then
+        local width = scaled20 * 9 + P.Scale(2) * 8
+
+        marks:SetSize(width, scaled20)
+        worldMarks:SetSize(width, scaled20)
+
+        if strfind(marksConfig, "^target") then
+            marksFrame:SetSize(width, P.Scale(40))
+            worldMarks:Hide()
+            P.ClearPoints(marks)
+            P.Point(marks, "BOTTOMLEFT")
+        elseif strfind(marksConfig, "^world") then
+            marksFrame:SetSize(width, P.Scale(40))
+            marks:Hide()
+            P.ClearPoints(worldMarks)
+            P.Point(worldMarks, "BOTTOMLEFT")
+        else -- both
+            marksFrame:SetSize(width, P.Scale(60))
+            P.ClearPoints(worldMarks)
+            P.Point(worldMarks, "BOTTOMLEFT")
+            P.ClearPoints(marks)
+            P.Point(marks, "BOTTOMLEFT", worldMarks, "TOPLEFT", 0, 2)
+        end
+
+        -- repoint each button
+        for i = 1, 9 do
+            P.ClearPoints(markButtons[i])
+            P.ClearPoints(worldMarkButtons[i])
+            if i == 1 then
+                P.Point(markButtons[i], "TOPLEFT")
+                P.Point(worldMarkButtons[i], "TOPLEFT")
+            else
+                P.Point(markButtons[i], "TOPLEFT", markButtons[i-1], "TOPRIGHT", 2, 0)
+                P.Point(worldMarkButtons[i], "TOPLEFT", worldMarkButtons[i-1], "TOPRIGHT", 2, 0)
+            end
+        end
+    elseif strfind(marksConfig, "_v$") then
+        local height = scaled20 * 9 + P.Scale(2) * 8
+
+        marks:SetSize(scaled20, height)
+        worldMarks:SetSize(scaled20, height)
+
+        if strfind(marksConfig, "^target") then
+            marksFrame:SetSize(scaled20, height + scaled20)
+            worldMarks:Hide()
+            P.ClearPoints(marks)
+            P.Point(marks, "BOTTOMLEFT")
+        elseif strfind(marksConfig, "^world") then
+            marksFrame:SetSize(scaled20, height + scaled20)
+            marks:Hide()
+            P.ClearPoints(worldMarks)
+            P.Point(worldMarks, "BOTTOMLEFT")
+        else -- both
+            marksFrame:SetSize(P.Scale(40) + P.Scale(2), height + scaled20)
+            P.ClearPoints(worldMarks)
+            P.Point(worldMarks, "BOTTOMLEFT")
+            P.ClearPoints(marks)
+            P.Point(marks, "BOTTOMLEFT", worldMarks, "BOTTOMRIGHT", 2, 0)
+        end
+
+        -- repoint each button
+        for i = 1, 9 do
+            P.ClearPoints(markButtons[i])
+            P.ClearPoints(worldMarkButtons[i])
+            if i == 1 then
+                P.Point(markButtons[i], "TOPLEFT")
+                P.Point(worldMarkButtons[i], "TOPLEFT")
+            else
+                P.Point(markButtons[i], "TOPLEFT", markButtons[i-1], "BOTTOMLEFT", 0, -2)
+                P.Point(worldMarkButtons[i], "TOPLEFT", worldMarkButtons[i-1], "BOTTOMLEFT", 0, -2)
+            end
+        end
+    end
+end
+
+local function CheckPermission()
+    if InCombatLockdown() then
+        marksFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
+    else
+        marksFrame:UnregisterEvent("PLAYER_REGEN_ENABLED")
+        if CellDB["tools"]["marks"][1] then
+            if strfind(CellDB["tools"]["marks"][3], "^target") then
+                if marksFrame.moverText:IsShown() or Cell.vars.hasPartyMarkPermission then
+                    marks:Show()
+                else
+                    marks:Hide()
+                end
+
+            elseif strfind(CellDB["tools"]["marks"][3], "^world") then
+                if marksFrame.moverText:IsShown() or Cell.vars.hasPartyMarkPermission then
+                    worldMarks:Show()
+                else
+                    worldMarks:Hide()
+                end
+
+            else -- both
+                if marksFrame.moverText:IsShown() or Cell.vars.hasPartyMarkPermission then
+                    marks:Show()
+                    worldMarks:Show()
+                else
+                    marks:Hide()
+                    worldMarks:Hide()
+                end
+            end
+
+            -- override
+            if Cell.vars.groupType == "solo" and CellDB["tools"]["marks"][2] then
+                marks:Show()
+            end
+
+            Rearrange(CellDB["tools"]["marks"][3])
+        else
+            marks:Hide()
+            worldMarks:Hide()
+        end
+    end
+end
+
+marksFrame:SetScript("OnEvent", function()
+    CheckPermission()
+end)
+
+Cell.RegisterCallback("PermissionChanged", "RaidMarks_PermissionChanged", CheckPermission)
+
+local function UpdateTools(which)
+    F.Debug("|cffBBFFFFUpdateTools:|r", which)
+    if not which or which == "marks" then
+        CheckPermission()
+        ShowMover(Cell.vars.showMover and CellDB["tools"]["marks"][1])
+    end
+
+    if not which or which == "fadeOut" then
+        if CellDB["tools"]["fadeOut"] and not marksFrame.moverText:IsShown() then
+            marksFrame:SetAlpha(0)
+        else
+            marksFrame:SetAlpha(1)
+        end
+    end
+
+    if not which then -- position
+        P.LoadPosition(marksFrame, CellDB["tools"]["marks"][4])
+    end
+end
+Cell.RegisterCallback("UpdateTools", "RaidMarks_UpdateTools", UpdateTools)
+
+local function UpdatePixelPerfect()
+    -- P.Resize(marksFrame)
+    -- P.Resize(marks)
+    -- P.Resize(worldMarks)
+    P.Repoint(marks) -- only marks needs to repoint
+
+    for i = 1, 9 do
+        markButtons[i]:UpdatePixelPerfect()
+        worldMarkButtons[i]:UpdatePixelPerfect()
+        P.Repoint(markButtons[i].texture)
+        P.Repoint(worldMarkButtons[i].texture)
+    end
+end
+Cell.RegisterCallback("UpdatePixelPerfect", "Marks_UpdatePixelPerfect", UpdatePixelPerfect)

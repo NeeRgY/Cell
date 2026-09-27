@@ -1,0 +1,26 @@
+<Ui xmlns="http://www.blizzard.com/wow/ui/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.blizzard.com/wow/ui/ https://raw.githubusercontent.com/Gethe/wow-ui-source/live/Interface/AddOns/Blizzard_SharedXML/UI.xsd">
+    <Script file="BattleRes.lua"/>
+    <Script file="Marks.lua"/>
+    <Script file="ReadyAndPull.lua"/>
+    <Script file="RaidRosterFrame.lua"/>
+    <Script file="DeathReport.lua"/>
+    <Script file="BuffTracker.lua"/>
+    <Script file="RaidTools.lua"/>
+    <Script file="Request_Spell.lua"/>
+    <Script file="Request_Dispel.lua"/>
+    <Script file="Request_Show.lua"/>
+    <Script file="Request_GlowOptions.lua"/>
+    <Script file="Request_IconOptions.lua"/>
+    <Script file="Request_TextOptions.lua"/>
+    <Include file="QuickAssist.xml"/>
+    <Script file="QuickAssist.lua"/>
+    <Script file="QuickAssist_Config.lua"/>
+    <Script file="QuickAssist_ImportExport.lua"/>
+    <Script file="QuickCast.lua"/>
+    <Script file="MidnightTools.lua"/>
+    <Script file="AuraBlacklist.lua"/>
+    <Script file="ClassicHealSpells.lua"/>
+    <Script file="MinimapButton.lua"/>
+    <Script file="BlizzardOptions.lua"/>
+</Ui>

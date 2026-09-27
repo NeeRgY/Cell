@@ -163,6 +163,11 @@ select(2, ...).L = setmetatable({
     ["CHANGELOGS"] = [[
 
 
+        <h1>r277.9.8.9 - NeRgY</h1>
+        <h2>General</h2>
+        <p>* WoW Forever is no longer a separate download -- it's included right here in this same package now, and picked automatically for that client.</p>
+        <br/>
+
         <h1>r277.9.8.8 - NeRgY</h1>
         <h2>Retail</h2>
         <p>* Fixed an error that could spam when using the raid marker icons in PvP arenas.</p>

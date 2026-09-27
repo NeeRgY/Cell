@@ -1,0 +1,89 @@
+## Interface: 16001
+## Title: Cell
+## Version: r277.9.8.9-forever
+## Author: enderneko, Krysio, NeRgY
+## SavedVariables: CellDB, CellDBBackup
+## LoadSavedVariablesFirst: 1
+## AddonCompartmentFunc: Cell_OnAddonCompartmentClick
+## IconTexture: Interface\AddOns\Cell\Media\icon.tga
+## Notes: Beautiful and customizable raid/party frames
+## Notes-deDE: Schone und anpassbare Raid-/Gruppenfenster
+## Category-enUS: Unit Frames
+## Category-deDE: Einheitenfenster
+## Category-esES: Marcos de unidades
+## Category-esMX: Marcos de unidades
+## Category-frFR: Portraits d'unités
+## Category-itIT: Riquadri unità
+## Category-koKR: 유닛 프레임
+## Category-ptBR: Quadros de unidade
+## Category-ruRU: Рамки юнитов
+## Category-zhCN: 单位框体
+## Category-zhTW: 單位框架
+
+## X-Curse-Project-ID: 409666
+## X-Wago-ID: qv63LLKb
+## X-WoWI-ID: 26244
+
+Libs\LibStub\LibStub.lua
+Libs\LibSerialize\LibSerialize.lua
+Libs\LibDeflate\LibDeflate.lua
+
+Forever\Locales\LoadLocales.xml
+
+Libs\utf8.lua
+Libs\CallbackHandler.lua
+Libs\PixelPerfect.lua
+Libs\FAIAP.lua
+Libs\CallbackHandler-1.0\CallbackHandler-1.0.lua
+Libs\LibSharedMedia-3.0\LibSharedMedia-3.0.lua
+Libs\LibCustomGlow-1.0\LibCustomGlow-1.0.lua
+Libs\AceComm-3.0\ChatThrottleLib.lua
+Libs\AceComm-3.0\AceComm-3.0.lua
+Libs\LibSpecData.lua
+Libs\LibGroupInfo.lua
+Libs\LibBadWords.lua
+Libs\LibTranslit-1.0\LibTranslit-1.0.lua
+
+Forever\Core.lua
+Forever\Utils.lua
+Forever\Utils_Auras.lua
+Forever\Revise.lua
+Forever\Comm\LoadComm.xml
+Forever\Widgets\Fonts.xml
+Forever\Widgets\LoadWidgets.xml
+Forever\Defaults\LoadDefaults.xml
+
+Forever\HideBlizzard.lua
+
+Forever\Indicators\Base.lua
+Forever\Indicators\Built-in.lua
+Forever\Indicators\StatusIcon.lua
+Forever\Indicators\AoEHealing.lua
+Forever\Indicators\TargetCounter.lua
+Forever\Indicators\TargetedSpells.lua
+Forever\Indicators\Actions.lua
+Forever\Indicators\Custom.lua
+Forever\Indicators\Supporter.lua
+
+Forever\RaidFrames\HealersAuraDisplay.lua
+Forever\RaidFrames\EngineGlow.lua
+Forever\RaidFrames\CustomAuraDisplay.lua
+Forever\RaidFrames\CombatAuraDisplay.lua
+Forever\RaidFrames\MainFrame.lua
+
+Forever\Modules\LoadModules.xml
+Forever\Utilities\LoadUtilities.xml
+Forever\RaidDebuffs\LoadRaidDebuffs.xml
+
+Forever\RaidFrames\SecretAuraFingerprint.lua
+Forever\RaidFrames\UnitButton.lua
+Forever\RaidFrames\HandleBuff.lua
+Forever\RaidFrames\UnitButton.xml
+Forever\RaidFrames\Groups\SoloFrame.lua
+Forever\RaidFrames\Groups\PartyFrame.lua
+Forever\RaidFrames\Groups\RaidFrame.lua
+Forever\RaidFrames\Groups\PetFrame.lua
+Forever\RaidFrames\Groups\NPCFrame.lua
+Forever\RaidFrames\Groups\SpotlightFrame.lua
+
+Forever\Supporters.lua

@@ -1,0 +1,8768 @@
+local addonName, Cell = ...
+local L = Cell.L
+---@type CellFuncs
+local F = Cell.funcs
+---@type CellIndicatorFuncs
+local I = Cell.iFuncs
+---@type PixelPerfectFuncs
+local P = Cell.pixelPerfectFuncs
+local LCG = LibStub("LibCustomGlow-1.0")
+--! pre-MoP Classic has no specialization concept - neither exists there, so calling either crashes.
+--! nil is a valid, handled input everywhere this is used (falls back to "no spec filtering").
+local GetSpecialization = GetSpecialization or (C_SpecializationInfo and C_SpecializationInfo.GetSpecialization)
+local GetSpecializationInfo = GetSpecializationInfo or (C_SpecializationInfo and C_SpecializationInfo.GetSpecializationInfo)
+
+-----------------------------------------
+-- Color
+-----------------------------------------
+local colors = {
+    grey = {s="|cFFA7A7A7", t={0.7, 0.7, 0.7}},
+    yellow = {s="|cFFFFD100", t= {1, 0.82, 0}},
+    orange = {s="|cFFFFC0CB", t= {1, 0.65, 0}},
+    firebrick = {s="|cFFFF3030", t={1, 0.19, 0.19}},
+    skyblue = {s="|cFF00CCFF", t={0, 0.8, 1}},
+    chartreuse = {s="|cFF80FF00", t={0.5, 1, 0}},
+}
+
+local class = select(2, UnitClass("player"))
+local classColor = {s="|cCCB2B2B2", t={0.7, 0.7, 0.7}}
+if class then
+    classColor.t[1], classColor.t[2], classColor.t[3], classColor.s = GetClassColor(class)
+    classColor.s = "|c"..classColor.s
+end
+
+-----------------------------------------
+-- Font
+-----------------------------------------
+local font_title_name = strupper(addonName).."_FONT_WIDGET_TITLE"
+local font_title_disable_name = strupper(addonName).."_FONT_WIDGET_TITLE_DISABLE"
+local font_name = strupper(addonName).."_FONT_WIDGET"
+local font_disable_name = strupper(addonName).."_FONT_WIDGET_DISABLE"
+local font_special_name = strupper(addonName).."_FONT_SPECIAL"
+local font_class_title_name = strupper(addonName).."_FONT_CLASS_TITLE"
+local font_class_name = strupper(addonName).."_FONT_CLASS"
+
+-----------------------------------------
+-- indicator settings widgets
+-----------------------------------------
+local settingWidgets = {} -- store all created widgets
+
+local function CreateSetting_Enabled(parent)
+    local widget
+
+    if not settingWidgets["enabled"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_Enabled", parent, 240, 30)
+        settingWidgets["enabled"] = widget
+
+        widget.cb = Cell.CreateCheckButton(widget, L["Enabled"])
+        widget.cb:SetPoint("TOPLEFT", 5, -8)
+
+        -- callback
+        function widget:SetFunc(func)
+            widget.cb.onClick = func
+        end
+
+        -- show db value
+        function widget:SetDBValue(checked)
+            widget.cb:SetChecked(checked)
+        end
+
+        function widget:SetLocked(locked)
+            widget.cb:SetEnabled(not locked)
+        end
+    else
+        widget = settingWidgets["enabled"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+local anchorPoints = {"BOTTOM", "BOTTOMLEFT", "BOTTOMRIGHT", "CENTER", "LEFT", "RIGHT", "TOP", "TOPLEFT", "TOPRIGHT"}
+local function CreateSetting_Position(parent)
+    local widget
+
+    if not settingWidgets["position"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_Position", parent, 240, 141)
+        settingWidgets["position"] = widget
+
+        local function GetResult()
+            return {widget.anchor:GetSelected(), widget.relativeTo:GetSelected(), widget.relativePoint:GetSelected(), widget.x:GetValue(), widget.y:GetValue()}
+        end
+
+        -- anchor
+        widget.anchor = Cell.CreateDropdown(widget, 110)
+        widget.anchor:SetPoint("TOPLEFT", 5, -20)
+        local items = {}
+        for _, point in pairs(anchorPoints) do
+            tinsert(items, {
+                ["text"] = L[point],
+                ["value"] = point,
+                ["onClick"] = function()
+                    widget.func(GetResult())
+                end,
+            })
+        end
+        widget.anchor:SetItems(items)
+
+        widget.anchorText = widget:CreateFontString(nil, "OVERLAY", font_name)
+        widget.anchorText:SetText(L["Anchor Point"])
+        widget.anchorText:SetPoint("BOTTOMLEFT", widget.anchor, "TOPLEFT", 0, 1)
+
+        -- relative point
+        widget.relativePoint = Cell.CreateDropdown(widget, 110)
+        widget.relativePoint:SetPoint("TOPLEFT", widget.anchor, "TOPRIGHT", 25, 0)
+        items = {}
+        for _, point in pairs(anchorPoints) do
+            tinsert(items, {
+                ["text"] = L[point],
+                ["value"] = point,
+                ["onClick"] = function()
+                    widget.func(GetResult())
+                end,
+            })
+        end
+        widget.relativePoint:SetItems(items)
+
+        widget.relativePointText = widget:CreateFontString(nil, "OVERLAY", font_name)
+        widget.relativePointText:SetText(L["Relative Point"])
+        widget.relativePointText:SetPoint("BOTTOMLEFT", widget.relativePoint, "TOPLEFT", 0, 1)
+
+        -- relative to
+        widget.relativeTo = Cell.CreateDropdown(widget, 110)
+        widget.relativeTo:SetPoint("TOPLEFT", widget.anchor, "BOTTOMLEFT", 0, -25)
+        widget.relativeTo:SetItems({
+            {
+                ["text"] = L["Unit Button"],
+                ["value"] = "button",
+                ["onClick"] = function()
+                    widget.func(GetResult())
+                end,
+            },
+            {
+                ["text"] = L["Health Bar"],
+                ["value"] = "healthBar",
+                ["onClick"] = function()
+                    widget.func(GetResult())
+                end,
+            }
+        })
+
+        widget.relativeToText = widget:CreateFontString(nil, "OVERLAY", font_name)
+        widget.relativeToText:SetText(L["Relative To"])
+        widget.relativeToText:SetPoint("BOTTOMLEFT", widget.relativeTo, "TOPLEFT", 0, 1)
+
+        -- x
+        widget.x = Cell.CreateSlider(L["X Offset"], widget, -150, 150, 110, 1)
+        widget.x:SetPoint("TOPLEFT", widget.relativeTo, "BOTTOMLEFT", 0, -25)
+        widget.x.afterValueChangedFn = function(value)
+            widget.func(GetResult())
+        end
+
+        -- y
+        widget.y = Cell.CreateSlider(L["Y Offset"], widget, -150, 150, 110, 1)
+        widget.y:SetPoint("TOPLEFT", widget.x, "TOPRIGHT", 25, 0)
+        widget.y.afterValueChangedFn = function(value)
+            widget.func(GetResult())
+        end
+
+        -- callback
+        function widget:SetFunc(func)
+            widget.func = func
+        end
+
+        -- show db value
+        function widget:SetDBValue(positionTable)
+            widget.anchor:SetSelectedValue(positionTable[1])
+            widget.relativePoint:SetSelectedValue(positionTable[3])
+            widget.relativeTo:SetSelectedValue(positionTable[2])
+            widget.x:SetValue(positionTable[4])
+            widget.y:SetValue(positionTable[5])
+        end
+    else
+        widget = settingWidgets["position"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+local anchorPoints_noHCenter = {"BOTTOMLEFT", "BOTTOMRIGHT", "LEFT", "RIGHT", "TOPLEFT", "TOPRIGHT"}
+local function CreateSetting_PositionNoHCenter(parent)
+    local widget
+
+    if not settingWidgets["position_noHCenter"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_PositionNoHCenter", parent, 240, 95)
+        settingWidgets["position_noHCenter"] = widget
+
+        local function GetResult()
+            return {widget.anchor:GetSelected(), widget.relativeTo:GetSelected(), widget.relativePoint:GetSelected(), widget.x:GetValue(), widget.y:GetValue()}
+        end
+
+        -- anchor
+        widget.anchor = Cell.CreateDropdown(widget, 110)
+        widget.anchor:SetPoint("TOPLEFT", 5, -20)
+        local items = {}
+        for _, point in pairs(anchorPoints_noHCenter) do
+            tinsert(items, {
+                ["text"] = L[point],
+                ["value"] = point,
+                ["onClick"] = function()
+                    widget.func(GetResult())
+                end,
+            })
+        end
+        widget.anchor:SetItems(items)
+
+        widget.anchorText = widget:CreateFontString(nil, "OVERLAY", font_name)
+        widget.anchorText:SetText(L["Anchor Point"])
+        widget.anchorText:SetPoint("BOTTOMLEFT", widget.anchor, "TOPLEFT", 0, 1)
+
+        -- relative point
+        widget.relativePoint = Cell.CreateDropdown(widget, 110)
+        widget.relativePoint:SetPoint("TOPLEFT", widget.anchor, "TOPRIGHT", 25, 0)
+        items = {}
+        for _, point in pairs(anchorPoints_noHCenter) do
+            tinsert(items, {
+                ["text"] = L[point],
+                ["value"] = point,
+                ["onClick"] = function()
+                    widget.func(GetResult())
+                end,
+            })
+        end
+        widget.relativePoint:SetItems(items)
+
+        widget.relativePointText = widget:CreateFontString(nil, "OVERLAY", font_name)
+        widget.relativePointText:SetText(L["Relative Point"])
+        widget.relativePointText:SetPoint("BOTTOMLEFT", widget.relativePoint, "TOPLEFT", 0, 1)
+
+        -- relative to
+        widget.relativeTo = Cell.CreateDropdown(widget, 110)
+        widget.relativeTo:SetPoint("TOPLEFT", widget.anchor, "BOTTOMLEFT", 0, -25)
+        widget.relativeTo:SetItems({
+            {
+                ["text"] = L["Unit Button"],
+                ["value"] = "button",
+                ["onClick"] = function()
+                    widget.func(GetResult())
+                end,
+            },
+            {
+                ["text"] = L["Health Bar"],
+                ["value"] = "healthBar",
+                ["onClick"] = function()
+                    widget.func(GetResult())
+                end,
+            }
+        })
+
+        widget.relativeToText = widget:CreateFontString(nil, "OVERLAY", font_name)
+        widget.relativeToText:SetText(L["Relative To"])
+        widget.relativeToText:SetPoint("BOTTOMLEFT", widget.relativeTo, "TOPLEFT", 0, 1)
+
+        -- x
+        widget.x = Cell.CreateSlider(L["X Offset"], widget, -150, 150, 110, 1)
+        widget.x:SetPoint("TOPLEFT", widget.relativeTo, "BOTTOMLEFT", 0, -25)
+        widget.x.afterValueChangedFn = function(value)
+            widget.func(GetResult())
+        end
+
+        -- y
+        widget.y = Cell.CreateSlider(L["Y Offset"], widget, -150, 150, 110, 1)
+        widget.y:SetPoint("TOPLEFT", widget.x, "TOPRIGHT", 25, 0)
+        widget.y.afterValueChangedFn = function(value)
+            widget.func(GetResult())
+        end
+
+        -- callback
+        function widget:SetFunc(func)
+            widget.func = func
+        end
+
+        -- show db value
+        function widget:SetDBValue(positionTable)
+            widget.anchor:SetSelectedValue(positionTable[1])
+            widget.relativePoint:SetSelectedValue(positionTable[3])
+            widget.relativeTo:SetSelectedValue(positionTable[2])
+            widget.x:SetValue(positionTable[4])
+            widget.y:SetValue(positionTable[5])
+        end
+    else
+        widget = settingWidgets["position_noHCenter"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+local function CreateSetting_ShieldBarPosition(parent)
+    local widget
+
+    if not settingWidgets["shieldBarPosition"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_PositionNoHCenter", parent, 240, 95)
+        settingWidgets["shieldBarPosition"] = widget
+
+        widget.anchor = Cell.CreateDropdown(widget, 110)
+        widget.anchor:SetPoint("TOPLEFT", 5, -20)
+        local items = {}
+        for _, point in pairs(anchorPoints_noHCenter) do
+            tinsert(items, {
+                ["text"] = L[point],
+                ["value"] = point,
+                ["onClick"] = function()
+                    widget.func({point, nil, widget.relativePoint:GetSelected(), widget.x:GetValue(), widget.y:GetValue()})
+                    Cell.SetEnabled(true, widget.relativePointText, widget.relativePoint, widget.x, widget.y)
+                end,
+            })
+        end
+        tinsert(items, 1, {
+            ["text"] = L["Health Bar"],
+            ["value"] = "HEALTH_BAR",
+            ["onClick"] = function()
+                widget.func({"HEALTH_BAR", nil, widget.relativePoint:GetSelected(), widget.x:GetValue(), widget.y:GetValue()})
+                Cell.SetEnabled(false, widget.relativePointText, widget.relativePoint, widget.x, widget.y)
+            end,
+        })
+        widget.anchor:SetItems(items)
+
+        widget.anchorText = widget:CreateFontString(nil, "OVERLAY", font_name)
+        widget.anchorText:SetText(L["Anchor Point"])
+        widget.anchorText:SetPoint("BOTTOMLEFT", widget.anchor, "TOPLEFT", 0, 1)
+
+        widget.relativePoint = Cell.CreateDropdown(widget, 110)
+        widget.relativePoint:SetPoint("LEFT", widget.anchor, "RIGHT", 25, 0)
+        items = {}
+        for _, point in pairs(anchorPoints_noHCenter) do
+            tinsert(items, {
+                ["text"] = L[point],
+                ["value"] = point,
+                ["onClick"] = function()
+                    widget.func({widget.anchor:GetSelected(), nil, point, widget.x:GetValue(), widget.y:GetValue()})
+                end,
+            })
+        end
+        widget.relativePoint:SetItems(items)
+
+        widget.relativePointText = widget:CreateFontString(nil, "OVERLAY", font_name)
+        widget.relativePointText:SetText(L["To UnitButton's"])
+        widget.relativePointText:SetPoint("BOTTOMLEFT", widget.relativePoint, "TOPLEFT", 0, 1)
+
+        widget.x = Cell.CreateSlider(L["X Offset"], widget, -150, 150, 110, 1)
+        widget.x:SetPoint("TOPLEFT", widget.anchor, "BOTTOMLEFT", 0, -25)
+        widget.x.afterValueChangedFn = function(value)
+            widget.func({widget.anchor:GetSelected(), nil, widget.relativePoint:GetSelected(), value, widget.y:GetValue()})
+        end
+
+        widget.y = Cell.CreateSlider(L["Y Offset"], widget, -150, 150, 110, 1)
+        widget.y:SetPoint("TOPLEFT", widget.relativePoint, "BOTTOMLEFT", 0, -25)
+        widget.y.afterValueChangedFn = function(value)
+            widget.func({widget.anchor:GetSelected(), nil, widget.relativePoint:GetSelected(), widget.x:GetValue(), value})
+        end
+
+        -- callback
+        function widget:SetFunc(func)
+            widget.func = func
+        end
+
+        -- show db value
+        function widget:SetDBValue(positionTable)
+            widget.anchor:SetSelectedValue(positionTable[1])
+            widget.relativePoint:SetSelectedValue(positionTable[3])
+            widget.x:SetValue(positionTable[4])
+            widget.y:SetValue(positionTable[5])
+
+            Cell.SetEnabled(positionTable[1] ~= "HEALTH_BAR", widget.relativePointText, widget.relativePoint, widget.x, widget.y)
+        end
+    else
+        widget = settingWidgets["shieldBarPosition"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+local function CreateSetting_Anchor(parent)
+    local widget
+
+    if not settingWidgets["anchor"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_Anchor", parent, 240, 50)
+        settingWidgets["anchor"] = widget
+
+        widget.anchor = Cell.CreateDropdown(widget, 170)
+        widget.anchor:SetPoint("TOPLEFT", 5, -20)
+
+        widget.anchor:SetItems({
+            {
+                ["text"] = L["Health Bar"].." ("..L["Current"]..")",
+                ["value"] = "healthbar-current",
+                ["onClick"] = function()
+                    widget.func("healthbar-current")
+                end
+            },
+            {
+                ["text"] = L["Health Bar"].." ("..L["Loss"]..")",
+                ["value"] = "healthbar-loss",
+                ["onClick"] = function()
+                    widget.func("healthbar-loss")
+                end
+            },
+            {
+                ["text"] = L["Health Bar"].." ("..L["Entire"]..")",
+                ["value"] = "healthbar-entire",
+                ["onClick"] = function()
+                    widget.func("healthbar-entire")
+                end
+            },
+            {
+                ["text"] = L["Unit Button"],
+                ["value"] = "unitButton",
+                ["onClick"] = function()
+                    widget.func("unitButton")
+                end
+            },
+        })
+
+        widget.anchorText = widget:CreateFontString(nil, "OVERLAY", font_name)
+        widget.anchorText:SetText(L["Anchor To"])
+        widget.anchorText:SetPoint("BOTTOMLEFT", widget.anchor, "TOPLEFT", 0, 1)
+
+        -- callback
+        function widget:SetFunc(func)
+            widget.func = func
+        end
+
+        -- show db value
+        function widget:SetDBValue(anchor)
+            widget.anchor:SetSelectedValue(anchor)
+        end
+    else
+        widget = settingWidgets["anchor"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+local function CreateSetting_FrameLevel(parent)
+    local widget
+
+    if not settingWidgets["frameLevel"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_FrameLevel", parent, 240, 50)
+        settingWidgets["frameLevel"] = widget
+
+        widget.frameLevel = Cell.CreateSlider(L["Frame Level"], widget, 1, 100, 110, 1)
+        widget.frameLevel:SetPoint("TOPLEFT", widget, 5, -20)
+        widget.frameLevel.afterValueChangedFn = function(value)
+            widget.func(value)
+        end
+
+        -- callback
+        function widget:SetFunc(func)
+            widget.func = func
+        end
+
+        -- show db value
+        function widget:SetDBValue(frameLevel, maxFrameLevel)
+            widget.frameLevel:UpdateMinMaxValues(1, maxFrameLevel)
+            widget.frameLevel:SetValue(frameLevel)
+        end
+    else
+        widget = settingWidgets["frameLevel"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+local function CreateSetting_Size(parent)
+    local widget
+
+    if not settingWidgets["size"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_Size", parent, 240, 50)
+        settingWidgets["size"] = widget
+
+        widget.width = Cell.CreateSlider(L["Width"], widget, 3, 500, 110, 1)
+        widget.width:SetPoint("TOPLEFT", widget, 5, -20)
+        widget.width.afterValueChangedFn = function(value)
+            widget.func({value, widget.height:GetValue()})
+        end
+
+        widget.height = Cell.CreateSlider(L["Height"], widget, 3, 500, 110, 1)
+        widget.height:SetPoint("LEFT", widget.width, "RIGHT", 25, 0)
+        widget.height.afterValueChangedFn = function(value)
+            widget.func({widget.width:GetValue(), value})
+        end
+
+        -- callback
+        function widget:SetFunc(func)
+            widget.func = func
+        end
+
+        -- show db value
+        function widget:SetDBValue(sizeTable)
+            widget.width:SetValue(sizeTable[1])
+            widget.height:SetValue(sizeTable[2])
+        end
+    else
+        widget = settingWidgets["size"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+-- local function CreateSetting_SizeBar(parent)
+--     local widget
+
+--     if not settingWidgets["size-bar"] then
+--         widget = Cell.CreateFrame("CellIndicatorSettings_SizeBar", parent, 240, 50)
+--         settingWidgets["size-bar"] = widget
+
+--         widget.width = Cell.CreateSlider(L["Width"], widget, 3, 500, 110, 1)
+--         widget.width:SetPoint("TOPLEFT", widget, 5, -20)
+--         widget.width.afterValueChangedFn = function(value)
+--             widget.func({value, widget.height:GetValue()})
+--         end
+
+--         widget.height = Cell.CreateSlider(L["Height"], widget, 3, 500, 110, 1)
+--         widget.height:SetPoint("LEFT", widget.width, "RIGHT", 25, 0)
+--         widget.height.afterValueChangedFn = function(value)
+--             widget.func({widget.width:GetValue(), value})
+--         end
+
+--         -- callback
+--         function widget:SetFunc(func)
+--             widget.func = func
+--         end
+
+--         -- show db value
+--         function widget:SetDBValue(sizeTable)
+--             widget.width:SetValue(sizeTable[1])
+--             widget.height:SetValue(sizeTable[2])
+--         end
+--     else
+--         widget = settingWidgets["size-bar"]
+--     end
+
+--     widget:Show()
+--     return widget
+-- end
+
+local function CreateSetting_SizeSquare(parent)
+    local widget
+
+    if not settingWidgets["size-square"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_SizeSquare", parent, 240, 50)
+        settingWidgets["size-square"] = widget
+
+        widget.size = Cell.CreateSlider(L["Size"], widget, 1, 200, 110, 1)
+        widget.size:SetPoint("TOPLEFT", widget, 5, -20)
+        widget.size.afterValueChangedFn = function(value)
+            widget.func({value, value})
+        end
+
+        -- callback
+        function widget:SetFunc(func)
+            widget.func = func
+        end
+
+        -- show db value
+        function widget:SetDBValue(sizeTable)
+            widget.size:SetValue(sizeTable[1])
+        end
+    else
+        widget = settingWidgets["size-square"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+local function CreateSetting_Spacing(parent)
+    local widget
+
+    if not settingWidgets["spacing"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_Spacing", parent, 240, 50)
+        settingWidgets["spacing"] = widget
+
+        widget.x = Cell.CreateSlider(L["Spacing"].." X", widget, -1, 50, 110, 1)
+        widget.x:SetPoint("TOPLEFT", widget, 5, -20)
+        widget.x.afterValueChangedFn = function(value)
+            widget.spacing[1] = value
+            widget.func(widget.spacing)
+        end
+
+        widget.y = Cell.CreateSlider(L["Spacing"].." Y", widget, -1, 50, 110, 1)
+        widget.y:SetPoint("LEFT", widget.x, "RIGHT", 25, 0)
+        widget.y.afterValueChangedFn = function(value)
+            widget.spacing[2] = value
+            widget.func(widget.spacing)
+        end
+
+        -- callback
+        function widget:SetFunc(func)
+            widget.func = func
+        end
+
+        -- show db value
+        function widget:SetDBValue(spacing)
+            widget.spacing = spacing
+            widget.x:SetValue(spacing[1])
+            widget.y:SetValue(spacing[2])
+        end
+    else
+        widget = settingWidgets["spacing"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+local function CreateSetting_Thickness(parent)
+    local widget
+
+    if not settingWidgets["thickness"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_Thickness", parent, 240, 50)
+        settingWidgets["thickness"] = widget
+
+        widget.size = Cell.CreateSlider(L["Size"], widget, 1, 15, 110, 1)
+        widget.size:SetPoint("TOPLEFT", widget, 5, -20)
+        widget.size.afterValueChangedFn = function(value)
+            widget.func(value)
+        end
+
+        -- callback
+        function widget:SetFunc(func)
+            widget.func = func
+        end
+
+        -- show db value
+        function widget:SetDBValue(n)
+            widget.size:SetValue(n or 1)
+        end
+    else
+        widget = settingWidgets["thickness"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+-- Checkbox + thickness slider in one box, so it's visually obvious the slider
+-- belongs to the checkbox above it (used by the debuff/dispel border toggles).
+local function CreateSetting_CheckButtonThickness(parent)
+    local widget
+
+    if not settingWidgets["checkbutton-thickness"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_CheckButtonThickness", parent, 240, 78)
+        settingWidgets["checkbutton-thickness"] = widget
+
+        widget.cb = Cell.CreateCheckButton(widget, "checkbutton-thickness")
+        widget.cb:SetPoint("TOPLEFT", 5, -8)
+
+        widget.size = Cell.CreateSlider(L["Size"], widget, 1, 15, 110, 0.5)
+        widget.size:SetPoint("TOPLEFT", widget, 5, -48)
+        widget.size.afterValueChangedFn = function(value)
+            widget.thicknessFunc(value)
+        end
+
+        -- callback
+        function widget:SetFunc(cbFunc, thicknessFunc)
+            widget.cb.onClick = function(checked)
+                cbFunc(checked)
+            end
+            widget.thicknessFunc = thicknessFunc
+        end
+
+        -- show db value
+        function widget:SetDBValue(settingName, checked, tooltip, thickness)
+            widget.cb:SetChecked(checked)
+            widget.cb:SetText(L[settingName])
+            if tooltip then
+                Cell.SetTooltips(widget.cb, "ANCHOR_TOPLEFT", 0, 2, L[settingName], string.split("|", tooltip))
+            else
+                Cell.ClearTooltips(widget.cb)
+            end
+            widget.size:SetValue(thickness or 1)
+        end
+    else
+        widget = settingWidgets["checkbutton-thickness"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+local function CreateSetting_SizeNormalBig(parent)
+    local widget
+
+    if not settingWidgets["size-normal-big"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_SizeNormalBig", parent, 240, 50)
+        settingWidgets["size-normal-big"] = widget
+
+        widget.sizeNormal = Cell.CreateSlider(L["Size"], widget, 1, 200, 110, 1)
+        widget.sizeNormal:SetPoint("TOPLEFT", widget, 5, -20)
+        widget.sizeNormal.afterValueChangedFn = function(value)
+            widget.func({{value, value}, {widget.sizeBig:GetValue(), widget.sizeBig:GetValue()}})
+        end
+
+        widget.sizeBig = Cell.CreateSlider(L["Size (Big)"], widget, 1, 200, 110, 1)
+        widget.sizeBig:SetPoint("LEFT", widget.sizeNormal, "RIGHT", 25, 0)
+        widget.sizeBig.afterValueChangedFn = function(value)
+            widget.func({{widget.sizeNormal:GetValue(), widget.sizeNormal:GetValue()}, {value, value}})
+        end
+
+        -- callback
+        function widget:SetFunc(func)
+            widget.func = func
+        end
+
+        -- show db value
+        function widget:SetDBValue(sizeTable)
+            widget.sizeNormal:SetValue(sizeTable[1][1])
+            widget.sizeBig:SetValue(sizeTable[2][1])
+        end
+    else
+        widget = settingWidgets["size-normal-big"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+local function CreateSetting_SizeAndBorder(parent)
+    local widget
+
+    if not settingWidgets["size-border"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_SizeAndBorder", parent, 240, 50)
+        settingWidgets["size-border"] = widget
+
+        widget.size = Cell.CreateSlider(L["Size"], widget, 1, 200, 110, 1)
+        widget.size:SetPoint("TOPLEFT", widget, 5, -20)
+        widget.size.afterValueChangedFn = function(value)
+            widget.func({value, value, widget.border:GetValue()})
+        end
+
+        widget.border = Cell.CreateSlider(L["Border"], widget, 1, 10, 110, 1)
+        widget.border:SetPoint("LEFT", widget.size, "RIGHT", 25, 0)
+        widget.border.afterValueChangedFn = function(value)
+            widget.func({widget.size:GetValue(), widget.size:GetValue(), value})
+        end
+
+        -- callback
+        function widget:SetFunc(func)
+            widget.func = func
+        end
+
+        -- show db value
+        function widget:SetDBValue(sizeTable, border)
+            widget.size:SetValue(sizeTable[1])
+            widget.border:SetValue(border or 1) -- before r33 there's no border value
+        end
+    else
+        widget = settingWidgets["size-border"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+local function CreateSetting_Height(parent)
+    local widget
+
+    if not settingWidgets["height"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_Height", parent, 240, 50)
+        settingWidgets["height"] = widget
+
+        widget.height = Cell.CreateSlider(L["Height"], widget, 1, 300, 110, 1)
+        widget.height:SetPoint("TOPLEFT", widget, 5, -20)
+        widget.height.afterValueChangedFn = function(value)
+            widget.func(value)
+        end
+
+        -- callback
+        function widget:SetFunc(func)
+            widget.func = func
+        end
+
+        -- show db value
+        function widget:SetDBValue(height)
+            widget.height:SetValue(height)
+        end
+    else
+        widget = settingWidgets["height"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+local function CreateSetting_TextWidth(parent)
+    local widget
+
+    if not settingWidgets["textWidth"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_TextWidth", parent, 240, 50)
+        settingWidgets["textWidth"] = widget
+
+        widget.textWidth = Cell.CreateDropdown(widget, 110)
+        widget.textWidth:SetPoint("TOPLEFT", 5, -20)
+        widget.textWidth:SetItems({
+            {
+                ["text"] = L["Unlimited"],
+                ["onClick"] = function()
+                    widget.func("unlimited")
+                    widget.percent:Hide()
+                    widget.length:Hide()
+                    widget.length2:Hide()
+                    widget.lengthValue = nil
+                    widget.lengthValue2 = nil
+                end,
+            },
+            {
+                ["text"] = L["Percentage"],
+                ["onClick"] = function()
+                    widget.func({"percentage", 0.75})
+                    widget.percent:SetSelectedValue(0.75)
+                    widget.percent:Show()
+                    widget.length:Hide()
+                    widget.length2:Hide()
+                    widget.lengthValue = nil
+                    widget.lengthValue2 = nil
+                end,
+            },
+            {
+                ["text"] = L["Length"],
+                ["onClick"] = function()
+                    widget.func({"length", 5, 3})
+                    widget.percent:Hide()
+                    widget.length:SetText(5)
+                    widget.length:Show()
+                    widget.length2:SetText(3)
+                    widget.length2:Show()
+                    widget.lengthValue = 5
+                    widget.lengthValue2 = 3
+                end,
+            },
+        })
+
+        widget.percent = Cell.CreateDropdown(widget, 75)
+        widget.percent:SetPoint("TOPLEFT", widget.textWidth, "TOPRIGHT", 25, 0)
+        Cell.SetTooltips(widget.percent.button, "ANCHOR_TOP", 0, 3, L["Name Width / UnitButton Width"])
+        widget.percent:SetItems({
+            {
+                ["text"] = "100%",
+                ["value"] = 1,
+                ["onClick"] = function()
+                    widget.func({"percentage", 1})
+                end,
+            },
+            {
+                ["text"] = "75%",
+                ["value"] = 0.75,
+                ["onClick"] = function()
+                    widget.func({"percentage", 0.75})
+                end,
+            },
+            {
+                ["text"] = "50%",
+                ["value"] = 0.5,
+                ["onClick"] = function()
+                    widget.func({"percentage", 0.5})
+                end,
+            },
+            {
+                ["text"] = "25%",
+                ["value"] = 0.25,
+                ["onClick"] = function()
+                    widget.func({"percentage", 0.25})
+                end,
+            },
+        })
+
+        widget.length = Cell.CreateEditBox(widget, 34, 20, false, false, true)
+        widget.length:SetPoint("TOPLEFT", widget.textWidth, "TOPRIGHT", 25, 0)
+
+        widget.enText = widget.length:CreateFontString(nil, "OVERLAY", font_name)
+        widget.enText:SetText(L["En"])
+        widget.enText:SetPoint("BOTTOMLEFT", widget.length, "TOPLEFT", 0, 1)
+
+        widget.length.confirmBtn = Cell.CreateButton(widget.length, "OK", "accent", {27, 20})
+        widget.length.confirmBtn:SetPoint("TOPLEFT", widget.length, "TOPRIGHT", -1, 0)
+        widget.length.confirmBtn:Hide()
+        widget.length.confirmBtn:SetScript("OnHide", function()
+            widget.length.confirmBtn:Hide()
+        end)
+        widget.length.confirmBtn:SetScript("OnClick", function()
+            local length = tonumber(widget.length:GetText())
+            widget.length:SetText(length)
+            widget.length:ClearFocus()
+            widget.length.confirmBtn:Hide()
+            widget.lengthValue = length
+
+            widget.func({"length", length, tonumber(widget.length2:GetText()) or widget.lengthValue2})
+        end)
+
+        widget.length:SetScript("OnTextChanged", function(self, userChanged)
+            if userChanged then
+                local length = tonumber(self:GetText())
+                if length and length ~= widget.lengthValue and length ~= 0 then
+                    widget.length.confirmBtn:Show()
+                else
+                    widget.length.confirmBtn:Hide()
+                end
+            end
+        end)
+
+        widget.length2 = Cell.CreateEditBox(widget, 33, 20, false, false, true)
+        widget.length2:SetPoint("TOPLEFT", widget.length, "TOPRIGHT", 25, 0)
+
+        widget.nonEnText = widget.length2:CreateFontString(nil, "OVERLAY", font_name)
+        widget.nonEnText:SetText(L["Non-En"])
+        widget.nonEnText:SetPoint("BOTTOMLEFT", widget.length2, "TOPLEFT", 0, 1)
+
+        widget.length2.confirmBtn = Cell.CreateButton(widget.length2, "OK", "accent", {27, 20})
+        widget.length2.confirmBtn:SetPoint("TOPLEFT", widget.length2, "TOPRIGHT", -1, 0)
+        widget.length2.confirmBtn:Hide()
+        widget.length2.confirmBtn:SetScript("OnHide", function()
+            widget.length2.confirmBtn:Hide()
+        end)
+        widget.length2.confirmBtn:SetScript("OnClick", function()
+            local length = tonumber(widget.length2:GetText())
+            widget.length2:SetText(length)
+            widget.length2:ClearFocus()
+            widget.length2.confirmBtn:Hide()
+            widget.lengthValue2 = length
+
+            widget.func({"length", tonumber(widget.length:GetText()) or widget.lengthValue, length})
+        end)
+
+        widget.length2:SetScript("OnTextChanged", function(self, userChanged)
+            if userChanged then
+                local length = tonumber(self:GetText())
+                if length and length ~= widget.lengthValue2 and length ~= 0 then
+                    widget.length2.confirmBtn:Show()
+                else
+                    widget.length2.confirmBtn:Hide()
+                end
+            end
+        end)
+
+        widget.widthText = widget:CreateFontString(nil, "OVERLAY", font_name)
+        widget.widthText:SetText(L["Text Width"])
+        widget.widthText:SetPoint("BOTTOMLEFT", widget.textWidth, "TOPLEFT", 0, 1)
+
+        -- callback
+        function widget:SetFunc(func)
+            widget.func = func
+        end
+
+        -- show db value
+        function widget:SetDBValue(width)
+            if width == "unlimited" then
+                widget.textWidth:SetSelectedItem(1)
+                widget.percent:Hide()
+                widget.length:Hide()
+                widget.length2:Hide()
+            elseif width[1] == "percentage" then
+                widget.textWidth:SetSelectedItem(2)
+                widget.percent:SetSelectedValue(width[2])
+                widget.percent:Show()
+                widget.length:Hide()
+                widget.length2:Hide()
+            elseif width[1] == "length" then
+                widget.textWidth:SetSelectedItem(3)
+                widget.length:SetText(width[2])
+                widget.lengthValue = width[2]
+                widget.length:Show()
+                widget.length2:SetText(width[3])
+                widget.lengthValue2 = width[3]
+                widget.length2:Show()
+                widget.percent:Hide()
+            end
+        end
+    else
+        widget = settingWidgets["textWidth"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+
+local function CreateSetting_Alpha(parent)
+    local widget
+
+    if not settingWidgets["alpha"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_Alpha", parent, 240, 50)
+        settingWidgets["alpha"] = widget
+
+        widget.alpha = Cell.CreateSlider(L["Alpha"], widget, 0, 1, 110, 0.01)
+        widget.alpha:SetPoint("TOPLEFT", widget, 5, -20)
+        widget.alpha.afterValueChangedFn = function(value)
+            widget.func(value)
+        end
+
+        -- callback
+        function widget:SetFunc(func)
+            widget.func = func
+        end
+
+        -- show db value
+        function widget:SetDBValue(alpha)
+            widget.alpha:SetValue(alpha)
+        end
+    else
+        widget = settingWidgets["alpha"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+local function CreateSetting_Num(parent)
+    local widget
+
+    if not settingWidgets["num"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_Num", parent, 240, 50)
+        settingWidgets["num"] = widget
+
+        widget.num = Cell.CreateSlider(L["Max Displayed"], widget, 1, 5, 110, 1)
+        widget.num:SetPoint("TOPLEFT", 5, -20)
+        widget.num.afterValueChangedFn = function(value)
+            widget.func(value)
+        end
+
+        -- callback
+        function widget:SetFunc(func)
+            widget.func = func
+        end
+
+        -- show db value
+        function widget:SetDBValue(num, maxN)
+            widget.num:UpdateMinMaxValues(1, maxN)
+            widget.num:SetValue(num)
+        end
+    else
+        widget = settingWidgets["num"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+local function CreateSetting_NumPerLine(parent)
+    local widget
+
+    if not settingWidgets["numPerLine"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_NumPerLine", parent, 240, 50)
+        settingWidgets["numPerLine"] = widget
+
+        widget.num = Cell.CreateSlider(L["Displayed Per Line"], widget, 1, 5, 110, 1)
+        widget.num:SetPoint("TOPLEFT", 5, -20)
+        widget.num.afterValueChangedFn = function(value)
+            widget.func(value)
+        end
+
+        -- callback
+        function widget:SetFunc(func)
+            widget.func = func
+        end
+
+        -- show db value
+        function widget:SetDBValue(num, maxN)
+            widget.num:UpdateMinMaxValues(2, maxN)
+            widget.num:SetValue(num)
+        end
+    else
+        widget = settingWidgets["numPerLine"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+local function CreateSetting_HealthFormat(parent)
+    local widget
+
+    if not settingWidgets["healthFormat"] then
+        -- colorByHealth/hideIfEmptyOrFull/2-decimal formats need to read a live
+        -- health percent, which Blizzard's secret-value system on current Retail
+        -- makes unreliable (often entirely unavailable) for real unit frames --
+        -- confirmed via live testing, not just theory. Classic/Cata/Wrath/Mists/TBC
+        -- have no such restriction, so these controls are Classic-only for now.
+        local isRetail = Cell.isRetail
+        widget = Cell.CreateFrame("CellIndicatorSettings_HealthFormat", parent, 240, isRetail and 380 or 560)
+        settingWidgets["healthFormat"] = widget
+
+        local health, healthMax = 213777, 300000
+        local shield = 65535
+        local healAbsorb = 88127
+
+        local function Decimals2Item(text, value)
+            if isRetail then return nil end
+            return {text, value}
+        end
+
+        -- NOTE: varargs, not a table literal -- a table constructor with a nil hole
+        -- in the middle breaks ipairs early, but select() over varargs doesn't.
+        local function BuildList(...)
+            local list = {}
+            for i = 1, select("#", ...) do
+                local item = select(i, ...)
+                if item then list[#list + 1] = item end
+            end
+            return list
+        end
+
+        local function UpdateWidgets()
+            local health1Enabled = widget.format.health1.format ~= "none"
+            widget.health1ColorDropdown:SetEnabled(health1Enabled)
+            widget.health1ColorPicker:SetEnabled(health1Enabled)
+            widget.health1GradientCB:SetEnabled(health1Enabled)
+            widget.health1HideZeroCB:SetEnabled(health1Enabled and widget.format.health1.format:find("^deficit") and true or false)
+
+            local health2Enabled = widget.format.health2.format ~= "none"
+            widget.health2DelimiterEB:SetEnabled(health2Enabled)
+            widget.health2DelimiterEB.confirmBtn:Hide()
+            widget.health2ColorDropdown:SetEnabled(health2Enabled)
+            widget.health2ColorPicker:SetEnabled(health2Enabled)
+            widget.health2GradientCB:SetEnabled(health2Enabled)
+            widget.health2HideZeroCB:SetEnabled(health2Enabled and widget.format.health2.format:find("^deficit") and true or false)
+            if health2Enabled then
+                widget.health2DelimiterText:SetTextColor(1, 1, 1)
+            else
+                widget.health2DelimiterText:SetTextColor(0.4, 0.4, 0.4)
+            end
+
+            local shieldEnabled = widget.format.shields.format ~= "none"
+            widget.shieldDelimiterEB:SetEnabled(shieldEnabled)
+            widget.shieldDelimiterEB.confirmBtn:Hide()
+            widget.shieldColorDropdown:SetEnabled(shieldEnabled)
+            widget.shieldColorPicker:SetEnabled(shieldEnabled)
+            widget.shieldGradientCB:SetEnabled(shieldEnabled)
+            if shieldEnabled then
+                widget.shieldDelimiterText:SetTextColor(1, 1, 1)
+            else
+                widget.shieldDelimiterText:SetTextColor(0.4, 0.4, 0.4)
+            end
+
+            local healAbsorbEnabled = widget.format.healAbsorbs.format ~= "none"
+            widget.healAbsorbDelimiterEB:SetEnabled(healAbsorbEnabled)
+            widget.healAbsorbDelimiterEB.confirmBtn:Hide()
+            widget.healAbsorbColorDropdown:SetEnabled(healAbsorbEnabled)
+            widget.healAbsorbColorPicker:SetEnabled(healAbsorbEnabled)
+            widget.healAbsorbGradientCB:SetEnabled(healAbsorbEnabled)
+            if healAbsorbEnabled then
+                widget.healAbsorbDelimiterText:SetTextColor(1, 1, 1)
+            else
+                widget.healAbsorbDelimiterText:SetTextColor(0.4, 0.4, 0.4)
+            end
+        end
+
+        local function GetItems(which, list)
+            local items = {}
+            for _, v in pairs(list) do
+                tinsert(items, {
+                    ["text"] = v[1],
+                    ["value"] = v[2],
+                    ["onClick"] = function()
+                        widget.format[which].format = v[2]
+                        UpdateWidgets()
+                        widget.func()
+                    end,
+                })
+            end
+            return items
+        end
+
+        local effective = " |cff7b7b7b" .. L["Effective"] .. "|r"
+        local decimals2 = " |cff7b7b7b" .. L["2 Decimals"] .. "|r"
+        local healthList = BuildList(
+            {L["None"], "none"},
+            {(health + shield - healAbsorb) .. effective, "effective"},
+            {F.FormatNumber(health + shield - healAbsorb) .. effective, "effective_short"},
+            Decimals2Item(F.FormatNumber(health + shield - healAbsorb, 2) .. effective .. decimals2, "effective_short2"),
+            {F.Round((health + shield - healAbsorb) / healthMax * 100) .. "%" .. effective, "effective_percent"},
+            {F.Round((health + shield - healAbsorb) / healthMax * 100) .. effective, "effective_percent_no_sign"},
+            {health, "health"},
+            {F.FormatNumber(health), "health_short"},
+            Decimals2Item(F.FormatNumber(health, 2) .. decimals2, "health_short2"),
+            {F.Round(health / healthMax * 100) .. "%", "health_percent"},
+            {F.Round(health / healthMax * 100), "health_percent_no_sign"},
+            {health - healthMax, "deficit"},
+            {F.FormatNumber(health - healthMax), "deficit_short"},
+            Decimals2Item(F.FormatNumber(health - healthMax, 2) .. decimals2, "deficit_short2"),
+            {F.Round((health - healthMax) / healthMax * 100) .. "%", "deficit_percent"},
+            {F.Round((health - healthMax) / healthMax * 100), "deficit_percent_no_sign"}
+        )
+
+        -- health1 ------------------------------
+        widget.health1FormatDropdown = Cell.CreateDropdown(widget, 127)
+        widget.health1FormatDropdown:SetPoint("TOPLEFT", 5, -20)
+        widget.health1FormatDropdown:SetItems(GetItems("health1", healthList))
+
+        local health1Text = widget:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET")
+        health1Text:SetPoint("BOTTOMLEFT", widget.health1FormatDropdown, "TOPLEFT", 0, 1)
+        health1Text:SetText(L["Health"] .. " 1")
+
+        widget.health1ColorDropdown = Cell.CreateDropdown(widget, 127)
+        widget.health1ColorDropdown:SetPoint("TOPLEFT", widget.health1FormatDropdown, "BOTTOMLEFT", 0, -10)
+        widget.health1ColorDropdown:SetItems({
+            {
+                ["text"] = L["Class Color"],
+                ["value"] = "class_color",
+                ["onClick"] = function()
+                    widget.format.health1.color[1] = "class_color"
+                    widget.func()
+                    widget.health1ColorPicker:Hide()
+                end,
+            },
+            {
+                ["text"] = L["Custom Color"],
+                ["value"] = "custom_color",
+                ["onClick"] = function()
+                    widget.format.health1.color[1] = "custom_color"
+                    widget.func()
+                    widget.health1ColorPicker:Show()
+                end,
+            },
+        })
+
+        widget.health1ColorPicker = Cell.CreateColorPicker(widget, "", false, function(r, g, b)
+            widget.format.health1.color[2][1] = r
+            widget.format.health1.color[2][2] = g
+            widget.format.health1.color[2][3] = b
+            widget.func()
+        end)
+        widget.health1ColorPicker:SetPoint("LEFT", widget.health1ColorDropdown, "RIGHT", 5, 0)
+
+        widget.health1GradientCB = Cell.CreateCheckButton(widget, L["Color by Health"], function(checked)
+            widget.format.health1.colorByHealth = checked
+            widget.func()
+        end, L["Color by Health"], L["colorByHealthTip"])
+        widget.health1GradientCB:SetPoint("TOPLEFT", widget.health1ColorDropdown, "BOTTOMLEFT", 0, -8)
+
+        widget.health1HideZeroCB = Cell.CreateCheckButton(widget, L["Hide if 0"], function(checked)
+            widget.format.health1.hideIfEmptyOrFull = checked
+            widget.func()
+        end, L["Hide if 0"], L["Hide the deficit text once a unit is topped off"])
+        widget.health1HideZeroCB:SetPoint("TOPLEFT", widget.health1GradientCB, "BOTTOMLEFT", 0, -8)
+
+        local health1NextAnchor, health1NextGap = widget.health1HideZeroCB, -20
+        if isRetail then
+            widget.health1GradientCB:Hide()
+            widget.health1HideZeroCB:Hide()
+            health1NextAnchor, health1NextGap = widget.health1ColorDropdown, -35
+        end
+
+        -- health2 ------------------------------
+        widget.health2FormatDropdown = Cell.CreateDropdown(widget, 127)
+        widget.health2FormatDropdown:SetPoint("TOPLEFT", health1NextAnchor, "BOTTOMLEFT", 0, health1NextGap)
+        widget.health2FormatDropdown:SetItems(GetItems("health2", healthList))
+
+        local health2Text = widget:CreateFontString(nil, "OVERLAY", font_name)
+        health2Text:SetPoint("BOTTOMLEFT", widget.health2FormatDropdown, "TOPLEFT", 0, 1)
+        health2Text:SetText(L["Health"] .. " 2")
+
+        widget.health2DelimiterEB = Cell.CreateEditBox(widget, 50, 20)
+        widget.health2DelimiterEB:SetPoint("TOPLEFT", widget.health2FormatDropdown, "TOPRIGHT", 25, 0)
+        widget.health2DelimiterEB:SetMaxLetters(5)
+        widget.health2DelimiterEB:AddConfirmButton(function()
+            widget.format.health2.delimiter = widget.health2DelimiterEB:GetText()
+            widget.func()
+        end)
+
+        widget.health2DelimiterText = widget:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET")
+        widget.health2DelimiterText:SetPoint("BOTTOMLEFT", widget.health2DelimiterEB, "TOPLEFT", 0, 1)
+        widget.health2DelimiterText:SetText(L["Delimiter"])
+
+        widget.health2ColorDropdown = Cell.CreateDropdown(widget, 127)
+        widget.health2ColorDropdown:SetPoint("TOPLEFT", widget.health2FormatDropdown, "BOTTOMLEFT", 0, -10)
+        widget.health2ColorDropdown:SetItems({
+            {
+            ["text"] = L["Class Color"],
+            ["value"] = "class_color",
+            ["onClick"] = function()
+                widget.format.health2.color[1] = "class_color"
+                widget.func()
+                widget.health2ColorPicker:Hide()
+            end,
+            },
+            {
+            ["text"] = L["Custom Color"],
+            ["value"] = "custom_color",
+            ["onClick"] = function()
+                widget.format.health2.color[1] = "custom_color"
+                widget.func()
+                widget.health2ColorPicker:Show()
+            end,
+            },
+        })
+
+        widget.health2ColorPicker = Cell.CreateColorPicker(widget, "", false, function(r, g, b)
+            widget.format.health2.color[2][1] = r
+            widget.format.health2.color[2][2] = g
+            widget.format.health2.color[2][3] = b
+            widget.func()
+        end)
+        widget.health2ColorPicker:SetPoint("LEFT", widget.health2ColorDropdown, "RIGHT", 5, 0)
+
+        widget.health2GradientCB = Cell.CreateCheckButton(widget, L["Color by Health"], function(checked)
+            widget.format.health2.colorByHealth = checked
+            widget.func()
+        end, L["Color by Health"], L["colorByHealthTip"])
+        widget.health2GradientCB:SetPoint("TOPLEFT", widget.health2ColorDropdown, "BOTTOMLEFT", 0, -8)
+
+        widget.health2HideZeroCB = Cell.CreateCheckButton(widget, L["Hide if 0"], function(checked)
+            widget.format.health2.hideIfEmptyOrFull = checked
+            widget.func()
+        end, L["Hide if 0"], L["Hide the deficit text once a unit is topped off"])
+        widget.health2HideZeroCB:SetPoint("TOPLEFT", widget.health2GradientCB, "BOTTOMLEFT", 0, -8)
+
+        local health2NextAnchor, health2NextGap = widget.health2HideZeroCB, -20
+        if isRetail then
+            widget.health2GradientCB:Hide()
+            widget.health2HideZeroCB:Hide()
+            health2NextAnchor, health2NextGap = widget.health2ColorDropdown, -35
+        end
+
+        -- shield -------------------------------
+        local shieldList = BuildList(
+            {L["None"], "none"},
+            {shield, "shields"},
+            {F.FormatNumber(shield), "shields_short"},
+            Decimals2Item(F.FormatNumber(shield, 2) .. decimals2, "shields_short2"),
+            {F.Round(shield / healthMax * 100) .. "%", "shields_percent"},
+            {F.Round(shield / healthMax * 100), "shields_percent_no_sign"}
+        )
+
+        widget.shieldFormatDropdown = Cell.CreateDropdown(widget, 127)
+        widget.shieldFormatDropdown:SetPoint("TOPLEFT", health2NextAnchor, "BOTTOMLEFT", 0, health2NextGap)
+        widget.shieldFormatDropdown:SetItems(GetItems("shields", shieldList))
+
+        local shieldText = widget:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET")
+        shieldText:SetPoint("BOTTOMLEFT", widget.shieldFormatDropdown, "TOPLEFT", 0, 1)
+        shieldText:SetText(L["Shields"])
+
+        -- delimiter
+        widget.shieldDelimiterEB = Cell.CreateEditBox(widget, 50, 20)
+        widget.shieldDelimiterEB:SetPoint("TOPLEFT", widget.shieldFormatDropdown, "TOPRIGHT", 25, 0)
+        widget.shieldDelimiterEB:SetMaxLetters(5)
+        widget.shieldDelimiterEB:AddConfirmButton(function()
+            widget.format.shields.delimiter = widget.shieldDelimiterEB:GetText()
+            widget.func()
+        end)
+
+        widget.shieldDelimiterText = widget:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET")
+        widget.shieldDelimiterText:SetPoint("BOTTOMLEFT", widget.shieldDelimiterEB, "TOPLEFT", 0, 1)
+        widget.shieldDelimiterText:SetText(L["Delimiter"])
+
+        -- color
+        widget.shieldColorDropdown = Cell.CreateDropdown(widget, 127)
+        widget.shieldColorDropdown:SetPoint("TOPLEFT", widget.shieldFormatDropdown, "BOTTOMLEFT", 0, -10)
+        widget.shieldColorDropdown:SetItems({
+            {
+                ["text"] = L["Class Color"],
+                ["value"] = "class_color",
+                ["onClick"] = function()
+                    widget.format.shields.color[1] = "class_color"
+                    widget.func()
+                    widget.shieldColorPicker:Hide()
+                end,
+            },
+            {
+                ["text"] = L["Custom Color"],
+                ["value"] = "custom_color",
+                ["onClick"] = function()
+                    widget.format.shields.color[1] = "custom_color"
+                    widget.func()
+                    widget.shieldColorPicker:Show()
+                end,
+            },
+        })
+
+        widget.shieldColorPicker = Cell.CreateColorPicker(widget, "", false, function(r, g, b)
+            widget.format.shields.color[2][1] = r
+            widget.format.shields.color[2][2] = g
+            widget.format.shields.color[2][3] = b
+            widget.func()
+        end)
+        widget.shieldColorPicker:SetPoint("LEFT", widget.shieldColorDropdown, "RIGHT", 5, 0)
+
+        widget.shieldGradientCB = Cell.CreateCheckButton(widget, L["Color by Health"], function(checked)
+            widget.format.shields.colorByHealth = checked
+            widget.func()
+        end, L["Color by Health"], L["colorByHealthTip"])
+        widget.shieldGradientCB:SetPoint("TOPLEFT", widget.shieldColorDropdown, "BOTTOMLEFT", 0, -8)
+
+        local shieldNextAnchor, shieldNextGap = widget.shieldGradientCB, -20
+        if isRetail then
+            widget.shieldGradientCB:Hide()
+            shieldNextAnchor, shieldNextGap = widget.shieldColorDropdown, -35
+        end
+
+        -- heal absorb --------------------------
+        local healAbsorbList = BuildList(
+            {L["None"], "none"},
+            {healAbsorb, "healabsorbs"},
+            {F.FormatNumber(healAbsorb), "healabsorbs_short"},
+            Decimals2Item(F.FormatNumber(healAbsorb, 2) .. decimals2, "healabsorbs_short2"),
+            {F.Round(healAbsorb / healthMax * 100) .. "%", "healabsorbs_percent"},
+            {F.Round(healAbsorb / healthMax * 100), "healabsorbs_percent_no_sign"}
+        )
+
+        widget.healAbsorbFormatDropdown = Cell.CreateDropdown(widget, 127)
+        widget.healAbsorbFormatDropdown:SetPoint("TOPLEFT", shieldNextAnchor, "BOTTOMLEFT", 0, shieldNextGap)
+        widget.healAbsorbFormatDropdown:SetItems(GetItems("healAbsorbs", healAbsorbList))
+
+        local healAbsorbText = widget:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET")
+        healAbsorbText:SetPoint("BOTTOMLEFT", widget.healAbsorbFormatDropdown, "TOPLEFT", 0, 1)
+        healAbsorbText:SetText(L["Heal Absorbs"])
+
+        -- delimiter
+        widget.healAbsorbDelimiterEB = Cell.CreateEditBox(widget, 50, 20)
+        widget.healAbsorbDelimiterEB:SetPoint("TOPLEFT", widget.healAbsorbFormatDropdown, "TOPRIGHT", 25, 0)
+        widget.healAbsorbDelimiterEB:SetMaxLetters(5)
+        widget.healAbsorbDelimiterEB:AddConfirmButton(function()
+            widget.format.healAbsorbs.delimiter = widget.healAbsorbDelimiterEB:GetText()
+            widget.func()
+        end)
+
+        widget.healAbsorbDelimiterText = widget:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET")
+        widget.healAbsorbDelimiterText:SetPoint("BOTTOMLEFT", widget.healAbsorbDelimiterEB, "TOPLEFT", 0, 1)
+        widget.healAbsorbDelimiterText:SetText(L["Delimiter"])
+
+        -- color
+        widget.healAbsorbColorDropdown = Cell.CreateDropdown(widget, 127)
+        widget.healAbsorbColorDropdown:SetPoint("TOPLEFT", widget.healAbsorbFormatDropdown, "BOTTOMLEFT", 0, -10)
+        widget.healAbsorbColorDropdown:SetItems({
+            {
+                ["text"] = L["Class Color"],
+                ["value"] = "class_color",
+                ["onClick"] = function()
+                    widget.format.healAbsorbs.color[1] = "class_color"
+                    widget.func()
+                    widget.healAbsorbColorPicker:Hide()
+                end,
+            },
+            {
+                ["text"] = L["Custom Color"],
+                ["value"] = "custom_color",
+                ["onClick"] = function()
+                    widget.format.healAbsorbs.color[1] = "custom_color"
+                    widget.func()
+                    widget.healAbsorbColorPicker:Show()
+                end,
+            }
+        })
+
+        widget.healAbsorbColorPicker = Cell.CreateColorPicker(widget, "", false, function(r, g, b)
+            widget.format.healAbsorbs.color[2][1] = r
+            widget.format.healAbsorbs.color[2][2] = g
+            widget.format.healAbsorbs.color[2][3] = b
+            widget.func()
+        end)
+        widget.healAbsorbColorPicker:SetPoint("LEFT", widget.healAbsorbColorDropdown, "RIGHT", 5, 0)
+
+        widget.healAbsorbGradientCB = Cell.CreateCheckButton(widget, L["Color by Health"], function(checked)
+            widget.format.healAbsorbs.colorByHealth = checked
+            widget.func()
+        end, L["Color by Health"], L["colorByHealthTip"])
+        widget.healAbsorbGradientCB:SetPoint("TOPLEFT", widget.healAbsorbColorDropdown, "BOTTOMLEFT", 0, -8)
+
+        if isRetail then
+            widget.healAbsorbGradientCB:Hide()
+        end
+
+        -- callback
+        function widget:SetFunc(func)
+            widget.func = func
+        end
+
+        -- show db value
+        function widget:SetDBValue(format)
+            widget.format = format
+            UpdateWidgets()
+
+            -- health1
+            widget.health1FormatDropdown:SetSelectedValue(format.health1.format)
+            widget.health1ColorDropdown:SetSelectedValue(format.health1.color[1])
+            widget.health1ColorPicker:SetColor(unpack(format.health1.color[2]))
+            widget.health1GradientCB:SetChecked(format.health1.colorByHealth and true or false)
+            widget.health1HideZeroCB:SetChecked(format.health1.hideIfEmptyOrFull and true or false)
+
+            -- health2
+            widget.health2FormatDropdown:SetSelectedValue(format.health2.format)
+            widget.health2DelimiterEB:SetText(format.health2.delimiter)
+            widget.health2ColorDropdown:SetSelectedValue(format.health2.color[1])
+            widget.health2ColorPicker:SetColor(unpack(format.health2.color[2]))
+            widget.health2GradientCB:SetChecked(format.health2.colorByHealth and true or false)
+            widget.health2HideZeroCB:SetChecked(format.health2.hideIfEmptyOrFull and true or false)
+
+            -- shields
+            widget.shieldFormatDropdown:SetSelectedValue(format.shields.format)
+            widget.shieldDelimiterEB:SetText(format.shields.delimiter)
+            widget.shieldColorDropdown:SetSelectedValue(format.shields.color[1])
+            widget.shieldColorPicker:SetColor(unpack(format.shields.color[2]))
+            widget.shieldGradientCB:SetChecked(format.shields.colorByHealth and true or false)
+
+            -- heal absorbs
+            widget.healAbsorbFormatDropdown:SetSelectedValue(format.healAbsorbs.format)
+            widget.healAbsorbDelimiterEB:SetText(format.healAbsorbs.delimiter)
+            widget.healAbsorbColorDropdown:SetSelectedValue(format.healAbsorbs.color[1])
+            widget.healAbsorbColorPicker:SetColor(unpack(format.healAbsorbs.color[2]))
+            widget.healAbsorbGradientCB:SetChecked(format.healAbsorbs.colorByHealth and true or false)
+        end
+    else
+        widget = settingWidgets["healthFormat"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+local function CreateSetting_PowerFormat(parent)
+    local widget
+
+    if not settingWidgets["powerFormat"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_PowerFormat", parent, 240, 50)
+        settingWidgets["powerFormat"] = widget
+
+        widget.format = Cell.CreateDropdown(widget, 127)
+        widget.format:SetPoint("TOPLEFT", 5, -20)
+        widget.format:SetItems({
+            {
+                ["text"] = "50%",
+                ["value"] = "percentage",
+                ["onClick"] = function()
+                    widget.func("percentage")
+                end,
+            },
+            {
+                ["text"] = "25000",
+                ["value"] = "number",
+                ["onClick"] = function()
+                    widget.func("number")
+                end,
+            },
+            {
+                ["text"] = F.FormatNumber(25000),
+                ["value"] = "number-short",
+                ["onClick"] = function()
+                    widget.func("number-short")
+                end,
+            },
+        })
+
+        widget.formatText = widget:CreateFontString(nil, "OVERLAY", font_name)
+        widget.formatText:SetText(L["Format"])
+        widget.formatText:SetPoint("BOTTOMLEFT", widget.format, "TOPLEFT", 0, 1)
+
+        -- callback
+        function widget:SetFunc(func)
+            widget.func = func
+        end
+
+        -- show db value
+        function widget:SetDBValue(format)
+            widget.format:SetSelectedValue(format)
+        end
+    else
+        widget = settingWidgets["powerFormat"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+local function CreateSetting_DurationVisibility(parent)
+    local widget
+
+    if not settingWidgets["durationVisibility"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_DurationVisibility", parent, 240, 50)
+        settingWidgets["durationVisibility"] = widget
+
+        widget.durationVisibility = Cell.CreateDropdown(widget, 245)
+        widget.durationVisibility:SetPoint("TOPLEFT", 5, -20)
+        widget.durationVisibility:SetItems({
+            {
+                ["text"] = L["Never"],
+                ["value"] = false,
+                ["onClick"] = function()
+                    widget.func(false)
+                end,
+            },
+            {
+                ["text"] = L["Always"],
+                ["value"] = true,
+                ["onClick"] = function()
+                    widget.func(true)
+                end,
+            },
+            {
+                ["text"] = "< 75%",
+                ["value"] = 0.75,
+                ["onClick"] = function()
+                    widget.func(0.75)
+                end,
+            },
+            {
+                ["text"] = "< 50%",
+                ["value"] = 0.5,
+                ["onClick"] = function()
+                    widget.func(0.5)
+                end,
+            },
+            {
+                ["text"] = "< 30%",
+                ["value"] = 0.3,
+                ["onClick"] = function()
+                    widget.func(0.3)
+                end,
+            },
+            {
+                ["text"] = "< 25%",
+                ["value"] = 0.25,
+                ["onClick"] = function()
+                    widget.func(0.25)
+                end,
+            },
+            {
+                ["text"] = "< 15 "..L["sec"],
+                ["value"] = 15,
+                ["onClick"] = function()
+                    widget.func(15)
+                end,
+            },
+            {
+                ["text"] = "< 10 "..L["sec"],
+                ["value"] = 10,
+                ["onClick"] = function()
+                    widget.func(10)
+                end,
+            },
+            {
+                ["text"] = "< 5 "..L["sec"],
+                ["value"] = 5,
+                ["onClick"] = function()
+                    widget.func(5)
+                end,
+            },
+        })
+
+        widget.durationVisibilityText = widget:CreateFontString(nil, "OVERLAY", font_name)
+        widget.durationVisibilityText:SetText(L["showDuration"])
+        widget.durationVisibilityText:SetPoint("BOTTOMLEFT", widget.durationVisibility, "TOPLEFT", 0, 1)
+
+        -- callback
+        function widget:SetFunc(func)
+            widget.func = func
+        end
+
+        -- show db value
+        function widget:SetDBValue(durationVisibility)
+            widget.durationVisibility:SetSelectedValue(durationVisibility)
+        end
+    else
+        widget = settingWidgets["durationVisibility"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+-- (Blizzard's countdown text doesn't support percentage/time thresholds)
+local function CreateSetting_DurationVisibilitySimple(parent)
+    local widget
+
+    if not settingWidgets["durationVisibilitySimple"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_DurationVisibilitySimple", parent, 240, 50)
+        settingWidgets["durationVisibilitySimple"] = widget
+
+        widget.durationVisibility = Cell.CreateDropdown(widget, 245)
+        widget.durationVisibility:SetPoint("TOPLEFT", 5, -20)
+        widget.durationVisibility:SetItems({
+            {
+                ["text"] = L["Never"],
+                ["value"] = false,
+                ["onClick"] = function()
+                    widget.func(false)
+                end,
+            },
+            {
+                ["text"] = L["Always"],
+                ["value"] = true,
+                ["onClick"] = function()
+                    widget.func(true)
+                end,
+            },
+        })
+
+        widget.durationVisibilityText = widget:CreateFontString(nil, "OVERLAY", font_name)
+        widget.durationVisibilityText:SetText(L["showDuration"])
+        widget.durationVisibilityText:SetPoint("BOTTOMLEFT", widget.durationVisibility, "TOPLEFT", 0, 1)
+
+        function widget:SetFunc(func)
+            widget.func = func
+        end
+
+        function widget:SetDBValue(durationVisibility)
+            -- since Blizzard's countdown text only supports on/off, not thresholds.
+            -- The saved value isn't modified — only the dropdown display is coerced.
+            if durationVisibility and durationVisibility ~= false then
+                durationVisibility = true
+            end
+            widget.durationVisibility:SetSelectedValue(durationVisibility)
+        end
+    else
+        widget = settingWidgets["durationVisibilitySimple"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+local function CreateSetting_Orientation(parent)
+    local widget
+
+    if not settingWidgets["orientation"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_Orientation", parent, 240, 50)
+        settingWidgets["orientation"] = widget
+
+        widget.orientation = Cell.CreateDropdown(widget, 245)
+        widget.orientation:SetPoint("TOPLEFT", 5, -20)
+        local function onSelect(value)
+            widget.func(value)
+        end
+
+        widget.orientation:SetItems({
+            {
+                ["text"] = L["left-to-right"],
+                ["onClick"] = function()
+                    onSelect("left-to-right")
+                end,
+            },
+            {
+                ["text"] = L["right-to-left"],
+                ["onClick"] = function()
+                    onSelect("right-to-left")
+                end,
+            },
+            {
+                ["text"] = L["top-to-bottom"],
+                ["onClick"] = function()
+                    onSelect("top-to-bottom")
+                end,
+            },
+            {
+                ["text"] = L["bottom-to-top"],
+                ["onClick"] = function()
+                    onSelect("bottom-to-top")
+                end,
+            },
+        })
+
+        widget.orientationText = widget:CreateFontString(nil, "OVERLAY", font_name)
+        widget.orientationText:SetText(L["Orientation"])
+        widget.orientationText:SetPoint("BOTTOMLEFT", widget.orientation, "TOPLEFT", 0, 1)
+
+        -- callback
+        function widget:SetFunc(func)
+            widget.func = func
+        end
+
+        -- show db value
+        function widget:SetDBValue(orientation)
+            widget.orientation:SetSelected(L[orientation])
+        end
+    else
+        widget = settingWidgets["orientation"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+-- ============================================================
+-- Private Aura Orientation: standard options + Krysio Style
+-- ============================================================
+local function CreateSetting_PrivateAuraOrientation(parent)
+    local widget
+
+    if not settingWidgets["privateAuraOrientation"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_PrivateAuraOrientation", parent, 240, 100)
+        settingWidgets["privateAuraOrientation"] = widget
+
+        widget.orientation = Cell.CreateDropdown(widget, 245)
+        widget.orientation:SetPoint("TOPLEFT", 5, -20)
+        local function onSelect(value)
+            widget.func(value)
+            if widget.desc then
+                if value == "krysio-style" then
+                    widget.desc:Show()
+                else
+                    widget.desc:Hide()
+                end
+            end
+        end
+
+        widget.orientation:SetItems({
+            {
+                ["text"] = L["left-to-right"],
+                ["onClick"] = function()
+                    onSelect("left-to-right")
+                end,
+            },
+            {
+                ["text"] = L["right-to-left"],
+                ["onClick"] = function()
+                    onSelect("right-to-left")
+                end,
+            },
+            {
+                ["text"] = L["top-to-bottom"],
+                ["onClick"] = function()
+                    onSelect("top-to-bottom")
+                end,
+            },
+            {
+                ["text"] = L["bottom-to-top"],
+                ["onClick"] = function()
+                    onSelect("bottom-to-top")
+                end,
+            },
+            {
+                ["text"] = L["krysio-style"],
+                ["onClick"] = function()
+                    onSelect("krysio-style")
+                end,
+            },
+        })
+
+        widget.orientationText = widget:CreateFontString(nil, "OVERLAY", font_name)
+        widget.orientationText:SetText(L["Orientation"])
+        widget.orientationText:SetPoint("BOTTOMLEFT", widget.orientation, "TOPLEFT", 0, 1)
+
+        -- scrolling description shown only when Krysio Style is selected
+        widget.desc = Cell.CreateScrollTextFrame(widget, "", 0.02, nil, nil, true)
+        widget.desc:SetPoint("TOPLEFT", widget.orientation, "BOTTOMLEFT", 5, -4)
+        widget.desc:SetPoint("TOPRIGHT", widget.orientation, "BOTTOMRIGHT", -5, -4)
+        widget.desc:SetHeight(20)
+        widget.desc:SetText(L["Krysio Style Desc"])
+        widget.desc:Hide()
+
+        -- callback
+        function widget:SetFunc(func)
+            widget.func = func
+        end
+
+        -- show db value
+        function widget:SetDBValue(orientation)
+            widget.orientation:SetSelected(L[orientation])
+            if widget.desc then
+                if orientation == "krysio-style" then
+                    widget.desc:Show()
+                else
+                    widget.desc:Hide()
+                end
+            end
+        end
+    else
+        widget = settingWidgets["privateAuraOrientation"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+-- Retail-only: picks which of EngineGlow.lua's native-engine-safe glow styles to use.
+local function CreateSetting_GlowStyle(parent)
+    local widget
+
+    if not settingWidgets["glowStyle"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_GlowStyle", parent, 240, 50)
+        settingWidgets["glowStyle"] = widget
+
+        widget.dropdown = Cell.CreateDropdown(widget, 245)
+        widget.dropdown:SetPoint("TOPLEFT", 5, -20)
+        widget.dropdown:SetItems({
+            {
+                ["text"] = L["Pulse"],
+                ["value"] = "pulse",
+                ["onClick"] = function()
+                    widget.func("pulse")
+                end,
+            },
+            {
+                ["text"] = L["Flash"],
+                ["value"] = "flash",
+                ["onClick"] = function()
+                    widget.func("flash")
+                end,
+            },
+        })
+
+        widget.text = widget:CreateFontString(nil, "OVERLAY", font_name)
+        widget.text:SetText(L["Glow Style"])
+        widget.text:SetPoint("BOTTOMLEFT", widget.dropdown, "TOPLEFT", 0, 1)
+
+        -- callback
+        function widget:SetFunc(func)
+            widget.func = func
+        end
+
+        -- show db value
+        function widget:SetDBValue(style)
+            widget.dropdown:SetSelectedValue(style or "pulse")
+        end
+    else
+        widget = settingWidgets["glowStyle"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+local function CreateSetting_BarOrientation(parent)
+    local widget
+
+    if not settingWidgets["barOrientation"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_BarOrientation", parent, 240, 50)
+        settingWidgets["barOrientation"] = widget
+
+        widget.orientation = Cell.CreateDropdown(widget, 245)
+        widget.orientation:SetPoint("TOPLEFT", 5, -20)
+        -- Retail only: the native engine's HORIZONTAL fill direction (CustomAuraDisplay.lua) ends
+        -- up visually the opposite of Classic's legacy bar for the same orientation value --
+        -- rather than touch that rendering again, just swap which label goes with which value
+        -- here, so the text matches what Retail actually shows. The vertical pair (top-to-bottom/
+        -- bottom-to-top) already matched and is left alone. Classic's dropdown (and its own bar
+        -- rendering, Indicators/Base.lua) is untouched.
+        widget.orientation:SetItems({
+            {
+                ["text"] = Cell.isRetail and L["right-to-left"] or L["left-to-right"],
+                ["value"] = "left-to-right",
+                ["onClick"] = function()
+                    widget.func("left-to-right")
+                end,
+            },
+            {
+                ["text"] = Cell.isRetail and L["left-to-right"] or L["right-to-left"],
+                ["value"] = "right-to-left",
+                ["onClick"] = function()
+                    widget.func("right-to-left")
+                end,
+            },
+            {
+                ["text"] = L["top-to-bottom"],
+                ["value"] = "top-to-bottom",
+                ["onClick"] = function()
+                    widget.func("top-to-bottom")
+                end,
+            },
+            {
+                ["text"] = L["bottom-to-top"],
+                ["value"] = "bottom-to-top",
+                ["onClick"] = function()
+                    widget.func("bottom-to-top")
+                end,
+            },
+        })
+
+        widget.orientationText = widget:CreateFontString(nil, "OVERLAY", font_name)
+        widget.orientationText:SetText(L["Orientation"])
+        widget.orientationText:SetPoint("BOTTOMLEFT", widget.orientation, "TOPLEFT", 0, 1)
+
+        -- callback
+        function widget:SetFunc(func)
+            widget.func = func
+        end
+
+        -- show db value
+        function widget:SetDBValue(orientation)
+            if orientation == "horizontal" then
+                orientation = "left-to-right"
+            elseif orientation == "vertical" then
+                orientation = "top-to-bottom"
+            end
+            widget.orientation:SetSelectedValue(orientation)
+        end
+    else
+        widget = settingWidgets["barOrientation"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+local function CreateSetting_VehicleNamePosition(parent)
+    local widget
+
+    if not settingWidgets["vehicleNamePosition"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_VehicleNamePosition", parent, 240, 50)
+        settingWidgets["vehicleNamePosition"] = widget
+
+        widget.position = Cell.CreateDropdown(widget, 110)
+        widget.position:SetPoint("TOPLEFT", 5, -20)
+        widget.position:SetItems({
+            {
+                ["text"] = L["TOP"],
+                ["value"] = "TOP",
+                ["onClick"] = function()
+                    widget.func({"TOP", widget.yOffset:GetValue()})
+                end,
+            },
+            {
+                ["text"] = L["BOTTOM"],
+                ["value"] = "BOTTOM",
+                ["onClick"] = function()
+                    widget.func({"BOTTOM", widget.yOffset:GetValue()})
+                end,
+            },
+            {
+                ["text"] = L["Hide"],
+                ["value"] = "Hide",
+                ["onClick"] = function()
+                    widget.func({"Hide", widget.yOffset:GetValue()})
+                end,
+            },
+        })
+
+        widget.positionText = widget:CreateFontString(nil, "OVERLAY", font_name)
+        widget.positionText:SetText(L["Vehicle Name Position"])
+        widget.positionText:SetPoint("BOTTOMLEFT", widget.position, "TOPLEFT", 0, 1)
+
+        widget.yOffset = Cell.CreateSlider(L["Y Offset"], widget, -50, 50, 110, 1)
+        widget.yOffset:SetPoint("TOPLEFT", widget.position, "TOPRIGHT", 25, 0)
+        widget.yOffset.afterValueChangedFn = function(value)
+            widget.func({widget.position:GetSelected(), value})
+        end
+
+        -- callback
+        function widget:SetFunc(func)
+            widget.func = func
+        end
+
+        -- show db value
+        function widget:SetDBValue(pTable)
+            widget.position:SetSelected(L[pTable[1]])
+            widget.yOffset:SetValue(pTable[2])
+        end
+    else
+        widget = settingWidgets["vehicleNamePosition"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+local function CreateSetting_StatusPosition(parent)
+    local widget
+
+    if not settingWidgets["statusPosition"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_StatusPosition", parent, 240, 95)
+        settingWidgets["statusPosition"] = widget
+
+        widget.position = Cell.CreateDropdown(widget, 110)
+        widget.position:SetPoint("TOPLEFT", 5, -20)
+        widget.position:SetItems({
+            {
+                ["text"] = L["TOP"],
+                ["value"] = "TOP",
+                ["onClick"] = function()
+                    widget.func({"TOP", widget.yOffset:GetValue(), widget.justify:GetSelected()})
+                end,
+            },
+            {
+                ["text"] = L["BOTTOM"],
+                ["value"] = "BOTTOM",
+                ["onClick"] = function()
+                    widget.func({"BOTTOM", widget.yOffset:GetValue(), widget.justify:GetSelected()})
+                end,
+            },
+        })
+
+        widget.positionText = widget:CreateFontString(nil, "OVERLAY", font_name)
+        widget.positionText:SetText(L["Status Text Position"])
+        widget.positionText:SetPoint("BOTTOMLEFT", widget.position, "TOPLEFT", 0, 1)
+
+        widget.justify = Cell.CreateDropdown(widget, 110)
+        widget.justify:SetPoint("TOPLEFT", widget.position, "TOPRIGHT", 25, 0)
+        widget.justify:SetItems({
+            {
+                ["text"] = "<<< >>>",
+                ["value"] = "justify",
+                ["onClick"] = function()
+                    widget.func({widget.position:GetSelected(), widget.yOffset:GetValue(), "justify"})
+                end,
+            },
+            {
+                ["text"] = "<<<",
+                ["value"] = "left",
+                ["onClick"] = function()
+                    widget.func({widget.position:GetSelected(), widget.yOffset:GetValue(), "left"})
+                end,
+            },
+            {
+                ["text"] = ">>>",
+                ["value"] = "right",
+                ["onClick"] = function()
+                    widget.func({widget.position:GetSelected(), widget.yOffset:GetValue(), "right"})
+                end,
+            },
+        })
+
+        widget.yOffset = Cell.CreateSlider(L["Y Offset"], widget, -150, 150, 110, 1)
+        widget.yOffset:SetPoint("TOPLEFT", widget.position, "BOTTOMLEFT", 0, -25)
+        widget.yOffset.afterValueChangedFn = function(value)
+            widget.func({widget.position:GetSelected(), value, widget.justify:GetSelected()})
+        end
+
+        -- callback
+        function widget:SetFunc(func)
+            widget.func = func
+        end
+
+        -- show db value
+        function widget:SetDBValue(pTable)
+            widget.position:SetSelectedValue(pTable[1])
+            widget.yOffset:SetValue(pTable[2])
+            widget.justify:SetSelectedValue(pTable[3])
+        end
+    else
+        widget = settingWidgets["statusPosition"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+local function CreateSetting_FontNoOffset(parent)
+    local widget
+
+    if not settingWidgets["font-noOffset"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_FontNoOffset", parent, 240, 95)
+        settingWidgets["font-noOffset"] = widget
+
+        widget.Update = function()
+            widget.fontTable[1] = widget.font:GetSelected() or "Cell ".._G.DEFAULT
+            widget.fontTable[2] = widget.fontSize:GetValue()
+            widget.fontTable[3] =  widget.outline:GetSelected()
+            widget.fontTable[4] =  widget.shadow:GetChecked()
+            widget.func()
+        end
+
+        widget.font = Cell.CreateDropdown(widget, 110, "font")
+        widget.font:SetPoint("TOPLEFT", 5, -20)
+        local items, fonts, defaultFontName, defaultFont = F.GetFontItems()
+        for _, item in pairs(items) do
+            item["onClick"] = widget.Update
+        end
+        widget.font:SetItems(items)
+
+        widget.fontText = widget:CreateFontString(nil, "OVERLAY", font_name)
+        widget.fontText:SetText(L["Font"])
+        widget.fontText:SetPoint("BOTTOMLEFT", widget.font, "TOPLEFT", 0, 1)
+
+        widget.outline = Cell.CreateDropdown(widget, 110)
+        widget.outline:SetPoint("LEFT", widget.font, "RIGHT", 25, 0)
+        widget.outline:SetItems({
+            {
+                ["text"] = L["None"],
+                ["value"] = "None",
+                ["onClick"] = widget.Update,
+            },
+            {
+                ["text"] = L["Outline"],
+                ["value"] = "Outline",
+                ["onClick"] = widget.Update,
+            },
+            {
+                ["text"] = L["Monochrome"],
+                ["value"] = "Monochrome",
+                ["onClick"] = widget.Update,
+            },
+        })
+
+        widget.outlineText = widget:CreateFontString(nil, "OVERLAY", font_name)
+        widget.outlineText:SetText(L["Outline"])
+        widget.outlineText:SetPoint("BOTTOMLEFT", widget.outline, "TOPLEFT", 0, 1)
+
+        widget.fontSize = Cell.CreateSlider(L["Size"], widget, 5, 50, 110, 1)
+        widget.fontSize:SetPoint("TOPLEFT", widget.font, "BOTTOMLEFT", 0, -25)
+        widget.fontSize.afterValueChangedFn = widget.Update
+
+        widget.shadow = Cell.CreateCheckButton(widget, L["Shadow"], widget.Update)
+        widget.shadow:SetPoint("TOPLEFT", widget.fontSize, "TOPRIGHT", 25, -3)
+
+        -- callback
+        function widget:SetFunc(func)
+            widget.func = func
+        end
+
+        -- show db value
+        function widget:SetDBValue(fontTable)
+            widget.fontTable = fontTable
+            widget.font:SetSelected(fontTable[1], fonts[fontTable[1]])
+            widget.fontSize:SetValue(fontTable[2])
+            widget.outline:SetSelected(L[fontTable[3]])
+            widget.shadow:SetChecked(fontTable[4])
+        end
+    else
+        widget = settingWidgets["font-noOffset"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+local function CreateSetting_Font(parent, index)
+    local widget
+
+    if not settingWidgets[index] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_"..F.UpperFirst(index), parent, 240, 145)
+        settingWidgets[index] = widget
+
+        widget.Update = function()
+            widget.fontTable[1] = widget.font:GetSelected() or "Cell ".._G.DEFAULT
+            widget.fontTable[2] = widget.fontSize:GetValue()
+            widget.fontTable[3] =  widget.outline:GetSelected()
+            widget.fontTable[4] = widget.shadow:GetChecked()
+            widget.fontTable[5] = widget.anchor:GetSelected()
+            widget.fontTable[6] = widget.xOffset:GetValue()
+            widget.fontTable[7] = widget.yOffset:GetValue()
+            widget.func()
+        end
+
+        -- title
+        widget.title = widget:CreateFontString(nil, "OVERLAY", font_class_name)
+        widget.title:SetPoint("TOPLEFT", 5, -5)
+
+        -- font
+        widget.font = Cell.CreateDropdown(widget, 110, "font")
+        -- widget.font:SetPoint("TOPLEFT", 5, -40)
+        local items, fonts, defaultFontName, defaultFont = F.GetFontItems()
+        for _, item in pairs(items) do
+            item["onClick"] = widget.Update
+        end
+        widget.font:SetItems(items)
+
+        widget.fontText = widget:CreateFontString(nil, "OVERLAY", font_name)
+        widget.fontText:SetText(L["Font"])
+        widget.fontText:SetPoint("BOTTOMLEFT", widget.font, "TOPLEFT", 0, 1)
+
+        -- outline
+        widget.outline = Cell.CreateDropdown(widget, 110)
+        widget.outline:SetPoint("TOPLEFT", widget.font, "TOPRIGHT", 25, 0)
+        widget.outline:SetItems({
+            {
+                ["text"] = L["None"],
+                ["value"] = "None",
+                ["onClick"] = widget.Update
+            },
+            {
+                ["text"] = L["Outline"],
+                ["value"] = "Outline",
+                ["onClick"] = widget.Update
+            },
+            {
+                ["text"] = L["Monochrome"],
+                ["value"] = "Monochrome",
+                ["onClick"] = widget.Update
+            },
+        })
+
+        widget.outlineText = widget:CreateFontString(nil, "OVERLAY", font_name)
+        widget.outlineText:SetText(L["Outline"])
+        widget.outlineText:SetPoint("BOTTOMLEFT", widget.outline, "TOPLEFT", 0, 1)
+
+        -- size
+        widget.fontSize = Cell.CreateSlider(L["Size"], widget, 5, 50, 110, 1)
+        widget.fontSize:SetPoint("TOPLEFT", widget.font, "BOTTOMLEFT", 0, -25)
+        widget.fontSize.afterValueChangedFn = widget.Update
+
+        -- shadow
+        widget.shadow = Cell.CreateCheckButton(widget, L["Shadow"], widget.Update)
+        widget.shadow:SetPoint("TOPLEFT", widget.fontSize, "TOPRIGHT", 25, -3)
+
+        -- anchor
+        widget.anchor = Cell.CreateDropdown(widget, 110)
+        widget.anchor:SetPoint("TOPLEFT", widget.fontSize, "BOTTOMLEFT", 0, -45)
+        local items = {}
+        for _, point in pairs(anchorPoints) do
+            tinsert(items, {
+                ["text"] = L[point],
+                ["value"] = point,
+                ["onClick"] = widget.Update,
+            })
+        end
+        widget.anchor:SetItems(items)
+
+        widget.anchorText = widget:CreateFontString(nil, "OVERLAY", font_name)
+        widget.anchorText:SetText(L["Anchor Point"])
+        widget.anchorText:SetPoint("BOTTOMLEFT", widget.anchor, "TOPLEFT", 0, 1)
+
+        -- x
+        widget.xOffset = Cell.CreateSlider(L["X Offset"], widget, -50, 50, 110, 1)
+        widget.xOffset:SetPoint("TOPLEFT", widget.anchor, "TOPRIGHT", 25, 0)
+        widget.xOffset.afterValueChangedFn = widget.Update
+
+        -- y
+        widget.yOffset = Cell.CreateSlider(L["Y Offset"], widget, -50, 50, 110, 1)
+        widget.yOffset:SetPoint("TOPLEFT", widget.xOffset, "BOTTOMLEFT", 0, -40)
+        widget.yOffset.afterValueChangedFn = widget.Update
+
+        -- color
+        widget.color = Cell.CreateColorPicker(widget, L["Color"], false, function(r, g, b)
+            widget.fontTable[8][1] = r
+            widget.fontTable[8][2] = g
+            widget.fontTable[8][3] = b
+            widget.func()
+        end)
+        widget.color:SetPoint("TOPLEFT", widget.anchor, "BOTTOMLEFT", 0, -30)
+
+        -- callback
+        function widget:SetFunc(func)
+            widget.func = func
+        end
+
+        -- show db value
+        function widget:SetDBValue(fontTable, title)
+            widget.fontTable = fontTable
+            widget.font:SetSelected(fontTable[1], fonts[fontTable[1]])
+            widget.fontSize:SetValue(fontTable[2])
+            widget.outline:SetSelectedValue(fontTable[3])
+            widget.shadow:SetChecked(fontTable[4])
+            widget.anchor:SetSelectedValue(fontTable[5])
+            widget.xOffset:SetValue(fontTable[6])
+            widget.yOffset:SetValue(fontTable[7])
+
+            local height = title and 295 or 275
+
+            -- title
+            if title then
+                widget.title:SetText(L[title])
+                widget.font:SetPoint("TOPLEFT", 5, -40)
+            else
+                widget.font:SetPoint("TOPLEFT", 5, -20)
+            end
+
+            -- color
+            if fontTable[8] then
+                widget.color:Show()
+                widget.color:SetColor(fontTable[8])
+            else
+                widget.color:Hide()
+            end
+
+            P.Height(widget, height)
+
+            if title == "durationFont" then
+                Cell.SetTooltips(widget.color, "ANCHOR_TOPLEFT", 0, 3, L["Color"], L["This setting will be ignored, if the %1$s option in %2$s tab is enabled"]:format(Cell.GetAccentColorString().."\""..L["Color Duration Text"].."\"|r", L["Appearance"]))
+            else
+                Cell.ClearTooltips(widget.color)
+            end
+        end
+    else
+        widget = settingWidgets[index]
+    end
+
+    widget:Show()
+    return widget
+end
+
+local function CreateSetting_Color(parent)
+    local widget
+
+    if not settingWidgets["color"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_Color", parent, 240, 30)
+        settingWidgets["color"] = widget
+
+        local colorPicker = Cell.CreateColorPicker(widget, L["Color"], false, function(r, g, b, a)
+            widget.colorTable[1] = r
+            widget.colorTable[2] = g
+            widget.colorTable[3] = b
+            widget.func(widget.colorTable)
+        end)
+        colorPicker:SetPoint("TOPLEFT", 5, -8)
+
+        -- callback
+        function widget:SetFunc(func)
+            widget.func = func
+        end
+
+        -- show db value
+        function widget:SetDBValue(colorTable)
+            widget.colorTable = colorTable
+            colorPicker:SetColor(colorTable)
+        end
+    else
+        widget = settingWidgets["color"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+local function CreateSetting_ColorAlpha(parent)
+    local widget
+
+    if not settingWidgets["color-alpha"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_ColorAlpha", parent, 240, 30)
+        settingWidgets["color-alpha"] = widget
+
+        local colorPicker = Cell.CreateColorPicker(widget, L["Color"], true, function(r, g, b, a)
+            widget.colorTable[1] = r
+            widget.colorTable[2] = g
+            widget.colorTable[3] = b
+            widget.colorTable[4] = a
+            widget.func(widget.colorTable)
+        end)
+        colorPicker:SetPoint("TOPLEFT", 5, -8)
+
+        -- callback
+        function widget:SetFunc(func)
+            widget.func = func
+        end
+
+        -- show db value
+        function widget:SetDBValue(colorTable)
+            widget.colorTable = colorTable
+            colorPicker:SetColor(colorTable)
+        end
+    else
+        widget = settingWidgets["color-alpha"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+-- Retail-only trimmed "colors" widget: same colorsTable shape (Normal/[2]/[3]/Border/Background)
+-- as CreateSetting_Colors below, but leaves out the two "Remaining Time <" threshold rows
+-- entirely -- the native Retail engine can't safely read a live remaining-time value into Lua
+-- (it's a secret value there), so those two rows never had any real effect on Retail. Classic
+-- keeps the full widget (CreateSetting_Colors, untouched).
+local function CreateSetting_ColorsStatic(parent)
+    local widget
+
+    if not settingWidgets["colors-static"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_ColorsStatic", parent, 240, 26)
+        settingWidgets["colors-static"] = widget
+
+        local normalColor = Cell.CreateColorPicker(widget, L["Color"], true, function(r, g, b, a)
+            widget.colorsTable[1][1] = r
+            widget.colorsTable[1][2] = g
+            widget.colorsTable[1][3] = b
+            widget.colorsTable[1][4] = a
+            widget.func(widget.colorsTable)
+        end)
+        normalColor:SetPoint("TOPLEFT", 5, -8)
+
+        local borderColor = Cell.CreateColorPicker(widget, L["Border Color"], true, function(r, g, b, a)
+            widget.colorsTable[4][1] = r
+            widget.colorsTable[4][2] = g
+            widget.colorsTable[4][3] = b
+            widget.colorsTable[4][4] = a
+            widget.func(widget.colorsTable)
+        end)
+        borderColor:SetPoint("TOPLEFT", normalColor, "BOTTOMLEFT", 0, -8)
+
+        local bgColor = Cell.CreateColorPicker(widget, L["Background Color"], true, function(r, g, b, a)
+            widget.colorsTable[5][1] = r
+            widget.colorsTable[5][2] = g
+            widget.colorsTable[5][3] = b
+            widget.colorsTable[5][4] = a
+            widget.func(widget.colorsTable)
+        end)
+        bgColor:SetPoint("TOPLEFT", borderColor, "BOTTOMLEFT", 0, -8)
+
+        -- callback
+        function widget:SetFunc(func)
+            widget.func = func
+        end
+
+        -- show db value
+        function widget:SetDBValue(colorsTable)
+            widget.colorsTable = colorsTable
+            normalColor:SetColor(colorsTable[1])
+
+            -- Self-heal old data: a profile that had "Remaining Time <" thresholds enabled
+            -- before this trimmed widget existed would otherwise keep applying them invisibly
+            -- (both on the real Retail frame -- if it ever gets threshold support later -- and,
+            -- right now, in the settings-panel preview, which reads this same colorsTable via
+            -- the legacy Bar_OnUpdate simulator and doesn't know these rows were removed here).
+            if colorsTable[2] and colorsTable[2][1] then
+                colorsTable[2][1] = false
+            end
+            if colorsTable[3] and colorsTable[3][1] then
+                colorsTable[3][1] = false
+            end
+
+            if colorsTable[4] and colorsTable[5] then
+                P.Height(widget, 82)
+                borderColor:SetColor(colorsTable[4])
+                borderColor:Show()
+                bgColor:SetColor(colorsTable[5])
+                bgColor:Show()
+            elseif colorsTable[4] then
+                P.Height(widget, 54)
+                borderColor:SetColor(colorsTable[4])
+                borderColor:Show()
+                bgColor:Hide()
+            else
+                P.Height(widget, 26)
+                borderColor:Hide()
+                bgColor:Hide()
+            end
+        end
+    else
+        widget = settingWidgets["colors-static"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+local function CreateSetting_Colors(parent)
+    local widget
+
+    if not settingWidgets["colors"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_Colors", parent, 240, 96)
+        settingWidgets["colors"] = widget
+
+        local normalColor = Cell.CreateColorPicker(widget, L["Normal"], true, function(r, g, b, a)
+            widget.colorsTable[1][1] = r
+            widget.colorsTable[1][2] = g
+            widget.colorsTable[1][3] = b
+            widget.colorsTable[1][4] = a
+            widget.func(widget.colorsTable)
+        end)
+        normalColor:SetPoint("TOPLEFT", 5, -8)
+
+        local percentColor, percentDropdown
+
+        local percentCB = Cell.CreateCheckButton(widget, "", function(checked)
+            widget.colorsTable[2][1] = checked
+            Cell.SetEnabled(checked, percentColor, percentDropdown)
+        end)
+        percentCB:SetPoint("TOPLEFT", normalColor, "BOTTOMLEFT", 0, -8)
+
+        percentColor = Cell.CreateColorPicker(widget, L["Remaining Time"].." <", true, function(r, g, b, a)
+            widget.colorsTable[2][3][1] = r
+            widget.colorsTable[2][3][2] = g
+            widget.colorsTable[2][3][3] = b
+            widget.colorsTable[2][3][4] = a
+            widget.func(widget.colorsTable)
+        end)
+        percentColor:SetPoint("TOPLEFT", percentCB, "TOPRIGHT", 2, 0)
+
+        local secColor, secEditBox, secText
+
+        local secCB = Cell.CreateCheckButton(widget, "", function(checked)
+            widget.colorsTable[3][1] = checked
+            Cell.SetEnabled(checked, secColor, secEditBox, secText)
+        end)
+        secCB:SetPoint("TOPLEFT", percentCB, "BOTTOMLEFT", 0, -8)
+
+        secColor = Cell.CreateColorPicker(widget, L["Remaining Time"].." <", true, function(r, g, b, a)
+            widget.colorsTable[3][3][1] = r
+            widget.colorsTable[3][3][2] = g
+            widget.colorsTable[3][3][3] = b
+            widget.colorsTable[3][3][4] = a
+            widget.func(widget.colorsTable)
+        end)
+        secColor:SetPoint("TOPLEFT", secCB, "TOPRIGHT", 2, 0)
+
+        local borderColor = Cell.CreateColorPicker(widget, L["Border Color"], true, function(r, g, b, a)
+            widget.colorsTable[4][1] = r
+            widget.colorsTable[4][2] = g
+            widget.colorsTable[4][3] = b
+            widget.colorsTable[4][4] = a
+            widget.func(widget.colorsTable)
+        end)
+        borderColor:SetPoint("TOPLEFT", secCB, "BOTTOMLEFT", 0, -8)
+
+        local bgColor = Cell.CreateColorPicker(widget, L["Background Color"], true, function(r, g, b, a)
+            widget.colorsTable[5][1] = r
+            widget.colorsTable[5][2] = g
+            widget.colorsTable[5][3] = b
+            widget.colorsTable[5][4] = a
+            widget.func(widget.colorsTable)
+        end)
+        bgColor:SetPoint("TOPLEFT", borderColor, "BOTTOMLEFT", 0, -8)
+
+
+        percentDropdown = Cell.CreateDropdown(widget, 60)
+        percentDropdown:SetPoint("LEFT", percentColor.label, "RIGHT", 5, 0)
+        percentDropdown:SetItems({
+            {
+                ["text"] = "75%",
+                ["value"] = 0.75,
+                ["onClick"] = function()
+                    widget.colorsTable[2][2] = 0.75
+                    widget.func(widget.colorsTable)
+                end,
+            },
+            {
+                ["text"] = "50%",
+                ["value"] = 0.5,
+                ["onClick"] = function()
+                    widget.colorsTable[2][2] = 0.5
+                    widget.func(widget.colorsTable)
+                end,
+            },
+            {
+                ["text"] = "30%",
+                ["value"] = 0.3,
+                ["onClick"] = function()
+                    widget.colorsTable[2][2] = 0.3
+                    widget.func(widget.colorsTable)
+                end,
+            },
+            {
+                ["text"] = "25%",
+                ["value"] = 0.25,
+                ["onClick"] = function()
+                    widget.colorsTable[2][2] = 0.25
+                    widget.func(widget.colorsTable)
+                end,
+            },
+        })
+
+        secEditBox = Cell.CreateEditBox(widget, 43, 20, false, false, true)
+        secEditBox:SetPoint("LEFT", secColor.label, "RIGHT", 5, 0)
+        secEditBox:SetMaxLetters(4)
+
+        secEditBox.confirmBtn = Cell.CreateButton(widget, "OK", "accent", {27, 20})
+        secEditBox.confirmBtn:SetPoint("LEFT", secEditBox, "RIGHT", -1, 0)
+        secEditBox.confirmBtn:Hide()
+        secEditBox.confirmBtn:SetScript("OnHide", function()
+            secEditBox.confirmBtn:Hide()
+        end)
+        secEditBox.confirmBtn:SetScript("OnClick", function()
+            local newSec = tonumber(secEditBox:GetText())
+            widget.colorsTable[3][2] = newSec
+            secEditBox:SetText(newSec)
+            secEditBox:ClearFocus()
+            secEditBox.confirmBtn:Hide()
+            widget.func(widget.colorsTable)
+        end)
+
+        secEditBox:SetScript("OnTextChanged", function(self, userChanged)
+            if userChanged then
+                local newSec = tonumber(self:GetText())
+                if newSec and newSec ~= widget.colorsTable[3][2] then
+                    secEditBox.confirmBtn:Show()
+                else
+                    secEditBox.confirmBtn:Hide()
+                end
+            end
+        end)
+
+        secText = widget:CreateFontString(nil, "OVERLAY", font_name)
+        secText:SetPoint("LEFT", secEditBox, "RIGHT", 5, 0)
+        secText:SetText(L["sec"])
+
+        -- callback
+        function widget:SetFunc(func)
+            widget.func = func
+        end
+
+        -- show db value
+        function widget:SetDBValue(colorsTable)
+            widget.colorsTable = colorsTable
+
+            percentCB:SetChecked(colorsTable[2][1])
+            Cell.SetEnabled(colorsTable[2][1], percentColor, percentDropdown)
+            secCB:SetChecked(colorsTable[3][1])
+            Cell.SetEnabled(colorsTable[3][1], secColor, secEditBox, secText)
+
+            normalColor:SetColor(colorsTable[1])
+            percentColor:SetColor(colorsTable[2][3])
+            secColor:SetColor(colorsTable[3][3])
+
+            if colorsTable[4] and colorsTable[5] then
+                P.Height(widget, 118)
+                borderColor:SetColor(colorsTable[4])
+                borderColor:Show()
+                bgColor:SetColor(colorsTable[5])
+                bgColor:Show()
+            elseif colorsTable[4] then
+                P.Height(widget, 96)
+                borderColor:SetColor(colorsTable[4])
+                borderColor:Show()
+                bgColor:Hide()
+            else
+                P.Height(widget, 75)
+                borderColor:Hide()
+                bgColor:Hide()
+            end
+
+            percentDropdown:SetSelectedValue(colorsTable[2][2])
+            secEditBox:SetText(colorsTable[3][2])
+        end
+    else
+        widget = settingWidgets["colors"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+local function CreateSetting_BlockColors(parent)
+    local widget
+
+    if not settingWidgets["blockColors"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_BlockColors", parent, 240, 56)
+        settingWidgets["blockColors"] = widget
+
+        local fillColor = Cell.CreateColorPicker(widget, L["Color"], true, function(r, g, b, a)
+            widget.colorsTable[2][1] = r
+            widget.colorsTable[2][2] = g
+            widget.colorsTable[2][3] = b
+            widget.colorsTable[2][4] = a
+            widget.func(widget.colorsTable)
+        end)
+        fillColor:SetPoint("TOPLEFT", 5, -8)
+
+        local borderColor = Cell.CreateColorPicker(widget, L["Border Color"], true, function(r, g, b, a)
+            widget.colorsTable[5][1] = r
+            widget.colorsTable[5][2] = g
+            widget.colorsTable[5][3] = b
+            widget.colorsTable[5][4] = a
+            widget.func(widget.colorsTable)
+        end)
+        borderColor:SetPoint("TOPLEFT", fillColor, "BOTTOMLEFT", 0, -8)
+
+        function widget:SetFunc(func)
+            widget.func = func
+        end
+
+        function widget:SetDBValue(colorsTable)
+            if type(colorsTable[2]) ~= "table" then
+                colorsTable[2] = {0, 1, 0, 1}
+            end
+            if type(colorsTable[5]) ~= "table" then
+                colorsTable[5] = {0, 0, 0, 1}
+            end
+            if type(colorsTable[3]) == "table" then
+                colorsTable[3][1] = false
+            end
+            if type(colorsTable[4]) == "table" then
+                colorsTable[4][1] = false
+            end
+            widget.colorsTable = colorsTable
+            fillColor:SetColor(colorsTable[2])
+            borderColor:SetColor(colorsTable[5])
+        end
+    else
+        widget = settingWidgets["blockColors"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+local function CreateSetting_RectColors(parent)
+    local widget
+
+    if not settingWidgets["rectColors"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_RectColors", parent, 240, 56)
+        settingWidgets["rectColors"] = widget
+
+        local fillColor = Cell.CreateColorPicker(widget, L["Color"], true, function(r, g, b, a)
+            widget.colorsTable[1][1] = r
+            widget.colorsTable[1][2] = g
+            widget.colorsTable[1][3] = b
+            widget.colorsTable[1][4] = a
+            widget.func(widget.colorsTable)
+        end)
+        fillColor:SetPoint("TOPLEFT", 5, -8)
+
+        local borderColor = Cell.CreateColorPicker(widget, L["Border Color"], true, function(r, g, b, a)
+            widget.colorsTable[4][1] = r
+            widget.colorsTable[4][2] = g
+            widget.colorsTable[4][3] = b
+            widget.colorsTable[4][4] = a
+            widget.func(widget.colorsTable)
+        end)
+        borderColor:SetPoint("TOPLEFT", fillColor, "BOTTOMLEFT", 0, -8)
+
+        function widget:SetFunc(func)
+            widget.func = func
+        end
+
+        function widget:SetDBValue(colorsTable)
+            if type(colorsTable[1]) ~= "table" then
+                colorsTable[1] = {0, 1, 0, 1}
+            end
+            if type(colorsTable[4]) ~= "table" then
+                colorsTable[4] = {0, 0, 0, 1}
+            end
+            if type(colorsTable[2]) == "table" then
+                colorsTable[2][1] = false
+            end
+            if type(colorsTable[3]) == "table" then
+                colorsTable[3][1] = false
+            end
+            widget.colorsTable = colorsTable
+            fillColor:SetColor(colorsTable[1])
+            borderColor:SetColor(colorsTable[4])
+        end
+    else
+        widget = settingWidgets["rectColors"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+local function CreateSetting_OverlayColors(parent)
+    local widget
+
+    if not settingWidgets["overlayColors"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_ColorsWithBG", parent, 240, 74)
+        settingWidgets["overlayColors"] = widget
+
+        local normalColor = Cell.CreateColorPicker(widget, L["Normal"], true, function(r, g, b, a)
+            widget.colorsTable[1][1] = r
+            widget.colorsTable[1][2] = g
+            widget.colorsTable[1][3] = b
+            widget.colorsTable[1][4] = a
+            widget.func(widget.colorsTable)
+        end)
+        normalColor:SetPoint("TOPLEFT", 5, -8)
+
+        local percentColor, percentDropdown
+
+        local percentCB = Cell.CreateCheckButton(widget, "", function(checked)
+            widget.colorsTable[2][1] = checked
+            Cell.SetEnabled(checked, percentColor, percentDropdown)
+            widget.func(widget.colorsTable)
+        end)
+        percentCB:SetPoint("TOPLEFT", normalColor, "BOTTOMLEFT", 0, -8)
+
+        percentColor = Cell.CreateColorPicker(widget, L["Remaining Time"].." <", true, function(r, g, b, a)
+            widget.colorsTable[2][3][1] = r
+            widget.colorsTable[2][3][2] = g
+            widget.colorsTable[2][3][3] = b
+            widget.colorsTable[2][3][4] = a
+            widget.func(widget.colorsTable)
+        end)
+        percentColor:SetPoint("TOPLEFT", percentCB, "TOPRIGHT", 2, 0)
+
+        local secColor, secEditBox, secText
+
+        local secCB = Cell.CreateCheckButton(widget, "", function(checked)
+            widget.colorsTable[3][1] = checked
+            Cell.SetEnabled(checked, secColor, secEditBox, secText)
+            widget.func(widget.colorsTable)
+        end)
+        secCB:SetPoint("TOPLEFT", percentCB, "BOTTOMLEFT", 0, -8)
+
+        secColor = Cell.CreateColorPicker(widget, L["Remaining Time"].." <", true, function(r, g, b, a)
+            widget.colorsTable[3][3][1] = r
+            widget.colorsTable[3][3][2] = g
+            widget.colorsTable[3][3][3] = b
+            widget.colorsTable[3][3][4] = a
+            widget.func(widget.colorsTable)
+        end)
+        secColor:SetPoint("TOPLEFT", secCB, "TOPRIGHT", 2, 0)
+
+        percentDropdown = Cell.CreateDropdown(widget, 60)
+        percentDropdown:SetPoint("LEFT", percentColor.label, "RIGHT", 5, 0)
+        percentDropdown:SetItems({
+            {
+                ["text"] = "75%",
+                ["value"] = 0.75,
+                ["onClick"] = function()
+                    widget.colorsTable[2][2] = 0.75
+                    widget.func(widget.colorsTable)
+                end,
+            },
+            {
+                ["text"] = "50%",
+                ["value"] = 0.5,
+                ["onClick"] = function()
+                    widget.colorsTable[2][2] = 0.5
+                    widget.func(widget.colorsTable)
+                end,
+            },
+            {
+                ["text"] = "30%",
+                ["value"] = 0.3,
+                ["onClick"] = function()
+                    widget.colorsTable[2][2] = 0.3
+                    widget.func(widget.colorsTable)
+                end,
+            },
+            {
+                ["text"] = "25%",
+                ["value"] = 0.25,
+                ["onClick"] = function()
+                    widget.colorsTable[2][2] = 0.25
+                    widget.func(widget.colorsTable)
+                end,
+            },
+        })
+
+        secEditBox = Cell.CreateEditBox(widget, 43, 20, false, false, true)
+        secEditBox:SetPoint("LEFT", secColor.label, "RIGHT", 5, 0)
+        secEditBox:SetMaxLetters(4)
+
+        secEditBox.confirmBtn = Cell.CreateButton(widget, "OK", "accent", {27, 20})
+        secEditBox.confirmBtn:SetPoint("LEFT", secEditBox, "RIGHT", -1, 0)
+        secEditBox.confirmBtn:Hide()
+        secEditBox.confirmBtn:SetScript("OnHide", function()
+            secEditBox.confirmBtn:Hide()
+        end)
+        secEditBox.confirmBtn:SetScript("OnClick", function()
+            local newSec = tonumber(secEditBox:GetText())
+            widget.colorsTable[3][2] = newSec
+            secEditBox:SetText(newSec)
+            secEditBox:ClearFocus()
+            secEditBox.confirmBtn:Hide()
+            widget.func(widget.colorsTable)
+        end)
+
+        secEditBox:SetScript("OnTextChanged", function(self, userChanged)
+            if userChanged then
+                local newSec = tonumber(self:GetText())
+                if newSec and newSec ~= widget.colorsTable[3][2] then
+                    secEditBox.confirmBtn:Show()
+                else
+                    secEditBox.confirmBtn:Hide()
+                end
+            end
+        end)
+
+        secText = widget:CreateFontString(nil, "OVERLAY", font_name)
+        secText:SetPoint("LEFT", secEditBox, "RIGHT", 5, 0)
+        secText:SetText(L["sec"])
+
+        -- callback
+        function widget:SetFunc(func)
+            widget.func = func
+        end
+
+        -- show db value
+        function widget:SetDBValue(colorsTable)
+            widget.colorsTable = colorsTable
+
+            percentCB:SetChecked(colorsTable[2][1])
+            Cell.SetEnabled(colorsTable[2][1], percentColor, percentDropdown)
+            secCB:SetChecked(colorsTable[3][1])
+            Cell.SetEnabled(colorsTable[3][1], secColor, secEditBox, secText)
+
+            normalColor:SetColor(colorsTable[1])
+            percentColor:SetColor(colorsTable[2][3])
+            secColor:SetColor(colorsTable[3][3])
+
+            percentDropdown:SetSelectedValue(colorsTable[2][2])
+            secEditBox:SetText(colorsTable[3][2])
+        end
+    else
+        widget = settingWidgets["overlayColors"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+local function CreateSetting_CustomColors(parent)
+    local widget
+
+    if not settingWidgets["customColors"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_CustomColors", parent, 240, 50)
+        settingWidgets["customColors"] = widget
+
+        -- dropdown
+        widget.color = Cell.CreateDropdown(widget, 170)
+        widget.color:SetPoint("TOPLEFT", 5, -20)
+
+        widget.buffItems = {
+            {
+                ["text"] = L["Solid"],
+                ["value"] = "solid",
+                ["onClick"] = function()
+                    P.Height(widget, 50)
+                    widget.colorPicker1:Show()
+                    widget.colorPicker2:Hide()
+                    widget.cotFrame:Hide()
+                    widget.colorsTable[1] = "solid"
+                    widget.func(widget.colorsTable)
+                end
+            },
+            {
+                ["text"] = L["Vertical Gradient"],
+                ["value"] = "gradient-vertical",
+                ["onClick"] = function()
+                    P.Height(widget, 50)
+                    widget.colorPicker1:Show()
+                    widget.colorPicker2:Show()
+                    widget.cotFrame:Hide()
+                    widget.colorsTable[1] = "gradient-vertical"
+                    widget.func(widget.colorsTable)
+                end
+            },
+            {
+                ["text"] = L["Horizontal Gradient"],
+                ["value"] = "gradient-horizontal",
+                ["onClick"] = function()
+                    P.Height(widget, 50)
+                    widget.colorPicker1:Show()
+                    widget.colorPicker2:Show()
+                    widget.cotFrame:Hide()
+                    widget.colorsTable[1] = "gradient-horizontal"
+                    widget.func(widget.colorsTable)
+                end
+            },
+            {
+                ["text"] = L["Change Over Time"],
+                ["value"] = "change-over-time",
+                ["onClick"] = function()
+                    P.Height(widget, 117)
+                    widget.colorPicker1:Hide()
+                    widget.colorPicker2:Hide()
+                    widget.cotFrame:Show()
+                    widget.colorsTable[1] = "change-over-time"
+                    widget.func(widget.colorsTable)
+                end
+            },
+            {
+                ["text"] = L["Class Color"],
+                ["value"] = "class-color",
+                ["onClick"] = function()
+                    P.Height(widget, 50)
+                    widget.colorPicker1:Hide()
+                    widget.colorPicker2:Hide()
+                    widget.cotFrame:Hide()
+                    widget.colorsTable[1] = "class-color"
+                    widget.func(widget.colorsTable)
+                end
+            },
+        }
+
+        widget.debuffItems = {
+            {
+                ["text"] = L["Solid"],
+                ["value"] = "solid",
+                ["onClick"] = function()
+                    P.Height(widget, 50)
+                    widget.colorPicker1:Show()
+                    widget.colorPicker2:Hide()
+                    widget.cotFrame:Hide()
+                    widget.colorsTable[1] = "solid"
+                    widget.func(widget.colorsTable)
+                end
+            },
+            {
+                ["text"] = L["Vertical Gradient"],
+                ["value"] = "gradient-vertical",
+                ["onClick"] = function()
+                    P.Height(widget, 50)
+                    widget.colorPicker1:Show()
+                    widget.colorPicker2:Show()
+                    widget.cotFrame:Hide()
+                    widget.colorsTable[1] = "gradient-vertical"
+                    widget.func(widget.colorsTable)
+                end
+            },
+            {
+                ["text"] = L["Horizontal Gradient"],
+                ["value"] = "gradient-horizontal",
+                ["onClick"] = function()
+                    P.Height(widget, 50)
+                    widget.colorPicker1:Show()
+                    widget.colorPicker2:Show()
+                    widget.cotFrame:Hide()
+                    widget.colorsTable[1] = "gradient-horizontal"
+                    widget.func(widget.colorsTable)
+                end
+            },
+            {
+                ["text"] = L["Debuff Type"],
+                ["value"] = "debuff-type",
+                ["onClick"] = function()
+                    P.Height(widget, 50)
+                    widget.colorPicker1:Hide()
+                    widget.colorPicker2:Hide()
+                    widget.cotFrame:Hide()
+                    widget.colorsTable[1] = "debuff-type"
+                    widget.func(widget.colorsTable)
+                end
+            },
+            {
+                ["text"] = L["Change Over Time"],
+                ["value"] = "change-over-time",
+                ["onClick"] = function()
+                    P.Height(widget, 117)
+                    widget.colorPicker1:Hide()
+                    widget.colorPicker2:Hide()
+                    widget.cotFrame:Show()
+                    widget.colorsTable[1] = "change-over-time"
+                    widget.func(widget.colorsTable)
+                end
+            },
+            {
+                ["text"] = L["Class Color"],
+                ["value"] = "class-color",
+                ["onClick"] = function()
+                    P.Height(widget, 50)
+                    widget.colorPicker1:Hide()
+                    widget.colorPicker2:Hide()
+                    widget.cotFrame:Hide()
+                    widget.colorsTable[1] = "class-color"
+                    widget.func(widget.colorsTable)
+                end
+            },
+        }
+
+        widget.colorText = widget:CreateFontString(nil, "OVERLAY", font_name)
+        widget.colorText:SetText(L["Color"])
+        widget.colorText:SetPoint("BOTTOMLEFT", widget.color, "TOPLEFT", 0, 1)
+
+        widget.colorPicker1 = Cell.CreateColorPicker(widget, "", true, function(r, g, b, a)
+            widget.colorsTable[2][1] = r
+            widget.colorsTable[2][2] = g
+            widget.colorsTable[2][3] = b
+            widget.colorsTable[2][4] = a
+            widget.func(widget.colorsTable)
+        end)
+        widget.colorPicker1:SetPoint("LEFT", widget.color, "RIGHT", 5, 0)
+
+        widget.colorPicker2 = Cell.CreateColorPicker(widget, "", true, function(r, g, b, a)
+            widget.colorsTable[3][1] = r
+            widget.colorsTable[3][2] = g
+            widget.colorsTable[3][3] = b
+            widget.colorsTable[3][4] = a
+            widget.func(widget.colorsTable)
+        end)
+        widget.colorPicker2:SetPoint("LEFT", widget.colorPicker1, "RIGHT", 5, 0)
+
+        widget.cotFrame = CreateFrame("Frame", nil, widget)
+        widget.cotFrame:SetSize(170, 50)
+        widget.cotFrame:SetPoint("TOPLEFT", widget.color, "BOTTOMLEFT", 0, -8)
+
+        local normalColor = Cell.CreateColorPicker(widget.cotFrame, L["Normal"], true, function(r, g, b, a)
+            widget.colorsTable[4][1] = r
+            widget.colorsTable[4][2] = g
+            widget.colorsTable[4][3] = b
+            widget.colorsTable[4][4] = a
+            widget.func(widget.colorsTable)
+        end)
+        normalColor:SetPoint("TOPLEFT")
+
+        local percentColor = Cell.CreateColorPicker(widget.cotFrame, L["Remaining Time"].." <", true, function(r, g, b, a)
+            widget.colorsTable[5][2][1] = r
+            widget.colorsTable[5][2][2] = g
+            widget.colorsTable[5][2][3] = b
+            widget.colorsTable[5][2][4] = a
+            widget.func(widget.colorsTable)
+        end)
+        percentColor:SetPoint("TOPLEFT", normalColor, "BOTTOMLEFT", 0, -8)
+
+        local secColor = Cell.CreateColorPicker(widget.cotFrame, L["Remaining Time"].." <", true, function(r, g, b, a)
+            widget.colorsTable[6][2][1] = r
+            widget.colorsTable[6][2][2] = g
+            widget.colorsTable[6][2][3] = b
+            widget.colorsTable[6][2][4] = a
+            widget.func(widget.colorsTable)
+        end)
+        secColor:SetPoint("TOPLEFT", percentColor, "BOTTOMLEFT", 0, -8)
+
+        local percentDropdown = Cell.CreateDropdown(widget.cotFrame, 60)
+        percentDropdown:SetPoint("LEFT", percentColor.label, "RIGHT", 5, 0)
+        percentDropdown:SetItems({
+            {
+                ["text"] = "75%",
+                ["value"] = 0.75,
+                ["onClick"] = function()
+                    widget.colorsTable[5][1] = 0.75
+                    widget.func(widget.colorsTable)
+                end,
+            },
+            {
+                ["text"] = "50%",
+                ["value"] = 0.5,
+                ["onClick"] = function()
+                    widget.colorsTable[5][1] = 0.5
+                    widget.func(widget.colorsTable)
+                end,
+            },
+            {
+                ["text"] = "30%",
+                ["value"] = 0.3,
+                ["onClick"] = function()
+                    widget.colorsTable[5][1] = 0.3
+                    widget.func(widget.colorsTable)
+                end,
+            },
+            {
+                ["text"] = "25%",
+                ["value"] = 0.25,
+                ["onClick"] = function()
+                    widget.colorsTable[5][1] = 0.25
+                    widget.func(widget.colorsTable)
+                end,
+            },
+            {
+                ["text"] = _G.NONE,
+                ["value"] = 0,
+                ["onClick"] = function()
+                    widget.colorsTable[5][1] = 0
+                    widget.func(widget.colorsTable)
+                end,
+            },
+        })
+
+        local secEditBox = Cell.CreateEditBox(widget.cotFrame, 43, 20, false, false, true)
+        secEditBox:SetPoint("LEFT", secColor.label, "RIGHT", 5, 0)
+        secEditBox:SetMaxLetters(4)
+
+        secEditBox.confirmBtn = Cell.CreateButton(widget.cotFrame, "OK", "accent", {27, 20})
+        secEditBox.confirmBtn:SetPoint("LEFT", secEditBox, "RIGHT", -1, 0)
+        secEditBox.confirmBtn:Hide()
+        secEditBox.confirmBtn:SetScript("OnHide", function()
+            secEditBox.confirmBtn:Hide()
+        end)
+        secEditBox.confirmBtn:SetScript("OnClick", function()
+            local newSec = tonumber(secEditBox:GetText())
+            widget.colorsTable[6][1] = newSec
+            secEditBox:SetText(newSec)
+            secEditBox:ClearFocus()
+            secEditBox.confirmBtn:Hide()
+            widget.func(widget.colorsTable)
+        end)
+
+        secEditBox:SetScript("OnTextChanged", function(self, userChanged)
+            if userChanged then
+                local newSec = tonumber(self:GetText())
+                if newSec and newSec ~= widget.colorsTable[6][1] then
+                    secEditBox.confirmBtn:Show()
+                else
+                    secEditBox.confirmBtn:Hide()
+                end
+            end
+        end)
+
+        local secText = widget.cotFrame:CreateFontString(nil, "OVERLAY", font_name)
+        secText:SetPoint("LEFT", secEditBox, "RIGHT", 5, 0)
+        secText:SetText(L["sec"])
+
+        -- callback
+        function widget:SetFunc(func)
+            widget.func = func
+        end
+
+        -- show db value
+        function widget:SetDBValue(colorsTable, auraType)
+            widget.colorsTable = colorsTable
+
+            if auraType == "buff" then
+                widget.color:SetItems(widget.buffItems)
+            else -- debuff
+                widget.color:SetItems(widget.debuffItems)
+            end
+            widget.color:SetSelectedValue(colorsTable[1])
+
+            if colorsTable[1] == "solid" then
+                P.Height(widget, 50)
+                widget.colorPicker1:Show()
+                widget.colorPicker2:Hide()
+                widget.cotFrame:Hide()
+            elseif colorsTable[1] == "debuff-type" then
+                P.Height(widget, 50)
+                widget.colorPicker1:Hide()
+                widget.colorPicker2:Hide()
+                widget.cotFrame:Hide()
+            elseif colorsTable[1] == "change-over-time" then
+                P.Height(widget, 117)
+                widget.colorPicker1:Hide()
+                widget.colorPicker2:Hide()
+                widget.cotFrame:Show()
+            elseif colorsTable[1] == "class-color" then
+                P.Height(widget, 50)
+                widget.colorPicker1:Hide()
+                widget.colorPicker2:Hide()
+                widget.cotFrame:Hide()
+            else -- gradient
+                P.Height(widget, 50)
+                widget.colorPicker1:Show()
+                widget.colorPicker2:Show()
+                widget.cotFrame:Hide()
+            end
+
+            widget.colorPicker1:SetColor(colorsTable[2])
+            widget.colorPicker2:SetColor(colorsTable[3])
+
+            normalColor:SetColor(colorsTable[4])
+            percentColor:SetColor(colorsTable[5][2])
+            secColor:SetColor(colorsTable[6][2])
+
+            percentDropdown:SetSelectedValue(colorsTable[5][1])
+            secEditBox:SetText(colorsTable[6][1])
+        end
+    else
+        widget = settingWidgets["customColors"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+local function CreateSetting_ClassColor(parent)
+    local widget
+
+    if not settingWidgets["classColor"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_ClassColor", parent, 240, 50)
+        settingWidgets["classColor"] = widget
+
+        widget.colorDropdown = Cell.CreateDropdown(widget, 127)
+        widget.colorDropdown:SetPoint("TOPLEFT", 5, -20)
+        widget.colorDropdown:SetItems({
+            {
+                ["text"] = L["Class Color"],
+                ["value"] = "class_color",
+                ["onClick"] = function()
+                    widget.func({"class_color", widget.colorPicker:GetColor()})
+                    widget.colorPicker:Hide()
+                end,
+            },
+            {
+                ["text"] = L["Custom Color"],
+                ["value"] = "custom_color",
+                ["onClick"] = function()
+                    widget.func({"custom_color", widget.colorPicker:GetColor()})
+                    widget.colorPicker:Show()
+                end,
+            },
+        })
+
+        local text = widget:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET")
+        text:SetPoint("BOTTOMLEFT", widget.colorDropdown, "TOPLEFT", 0, 1)
+        text:SetText(L["Color"])
+
+        widget.colorPicker = Cell.CreateColorPicker(widget, "", false, function(r, g, b)
+            widget.func({widget.colorDropdown:GetSelected(), {r, g, b}})
+        end)
+        widget.colorPicker:SetPoint("LEFT", widget.colorDropdown, "RIGHT", 5, 0)
+
+        -- callback
+        function widget:SetFunc(func)
+            widget.func = func
+        end
+
+        -- show db value
+        function widget:SetDBValue(cTable)
+            widget.colorDropdown:SetSelectedValue(cTable[1])
+            widget.colorPicker:SetColor(cTable[2])
+            if cTable[1] == "custom_color" then
+                widget.colorPicker:Show()
+            else
+                widget.colorPicker:Hide()
+            end
+        end
+    else
+        widget = settingWidgets["classColor"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+local function CreateSetting_PowerColor(parent)
+    local widget
+
+    if not settingWidgets["powerColor"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_PowerColor", parent, 240, 50)
+        settingWidgets["powerColor"] = widget
+
+        widget.colorDropdown = Cell.CreateDropdown(widget, 127)
+        widget.colorDropdown:SetPoint("TOPLEFT", 5, -20)
+        widget.colorDropdown:SetItems({
+            {
+                ["text"] = L["Power Color"],
+                ["value"] = "power_color",
+                ["onClick"] = function()
+                    widget.func({"power_color", widget.colorPicker:GetColor()})
+                    widget.colorPicker:Hide()
+                end,
+            },
+            {
+                ["text"] = L["Class Color"],
+                ["value"] = "class_color",
+                ["onClick"] = function()
+                    widget.func({"class_color", widget.colorPicker:GetColor()})
+                    widget.colorPicker:Hide()
+                end,
+            },
+            {
+                ["text"] = L["Custom Color"],
+                ["value"] = "custom_color",
+                ["onClick"] = function()
+                    widget.func({"custom_color", widget.colorPicker:GetColor()})
+                    widget.colorPicker:Show()
+                end,
+            },
+        })
+
+        local text = widget:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET")
+        text:SetPoint("BOTTOMLEFT", widget.colorDropdown, "TOPLEFT", 0, 1)
+        text:SetText(L["Color"])
+
+        widget.colorPicker = Cell.CreateColorPicker(widget, "", false, function(r, g, b)
+            widget.func({widget.colorDropdown:GetSelected(), {r, g, b}})
+        end)
+        widget.colorPicker:SetPoint("LEFT", widget.colorDropdown, "RIGHT", 5, 0)
+
+        -- callback
+        function widget:SetFunc(func)
+            widget.func = func
+        end
+
+        -- show db value
+        function widget:SetDBValue(cTable)
+            widget.colorDropdown:SetSelectedValue(cTable[1])
+            widget.colorPicker:SetColor(cTable[2])
+            if cTable[1] == "custom_color" then
+                widget.colorPicker:Show()
+            else
+                widget.colorPicker:Hide()
+            end
+        end
+    else
+        widget = settingWidgets["powerColor"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+local function CreateSetting_StatusColors(parent)
+    local widget
+
+    if not settingWidgets["statusColors"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_StatusColors", parent, 240, 100)
+        settingWidgets["statusColors"] = widget
+
+        local afkColor = Cell.CreateColorPicker(widget, L["AFK"], true, function(r, g, b, a)
+            widget.colorsTable["AFK"][1] = r
+            widget.colorsTable["AFK"][2] = g
+            widget.colorsTable["AFK"][3] = b
+            widget.colorsTable["AFK"][4] = a
+            widget.func()
+        end)
+        afkColor:SetPoint("TOPLEFT", 5, -7)
+
+        local offlineColor = Cell.CreateColorPicker(widget, L["OFFLINE"], true, function(r, g, b, a)
+            widget.colorsTable["OFFLINE"][1] = r
+            widget.colorsTable["OFFLINE"][2] = g
+            widget.colorsTable["OFFLINE"][3] = b
+            widget.colorsTable["OFFLINE"][4] = a
+            widget.func()
+        end)
+        offlineColor:SetPoint("TOPLEFT", afkColor, "TOPRIGHT", 70, 0)
+
+        local deadColor = Cell.CreateColorPicker(widget, L["DEAD"], true, function(r, g, b, a)
+            widget.colorsTable["DEAD"][1] = r
+            widget.colorsTable["DEAD"][2] = g
+            widget.colorsTable["DEAD"][3] = b
+            widget.colorsTable["DEAD"][4] = a
+            widget.func()
+        end)
+        deadColor:SetPoint("TOPLEFT", offlineColor, "TOPRIGHT", 70, 0)
+
+        local ghostColor = Cell.CreateColorPicker(widget, L["GHOST"], true, function(r, g, b, a)
+            widget.colorsTable["GHOST"][1] = r
+            widget.colorsTable["GHOST"][2] = g
+            widget.colorsTable["GHOST"][3] = b
+            widget.colorsTable["GHOST"][4] = a
+            widget.func()
+        end)
+        ghostColor:SetPoint("TOPLEFT", afkColor, "BOTTOMLEFT", 0, -8)
+
+        local feignColor = Cell.CreateColorPicker(widget, L["FEIGN"], true, function(r, g, b, a)
+            widget.colorsTable["FEIGN"][1] = r
+            widget.colorsTable["FEIGN"][2] = g
+            widget.colorsTable["FEIGN"][3] = b
+            widget.colorsTable["FEIGN"][4] = a
+            widget.func()
+        end)
+        feignColor:SetPoint("TOPLEFT", ghostColor, "TOPRIGHT", 70, 0)
+
+        local drinkingColor = Cell.CreateColorPicker(widget, L["DRINKING"], true, function(r, g, b, a)
+            widget.colorsTable["DRINKING"][1] = r
+            widget.colorsTable["DRINKING"][2] = g
+            widget.colorsTable["DRINKING"][3] = b
+            widget.colorsTable["DRINKING"][4] = a
+            widget.func()
+        end)
+        drinkingColor:SetPoint("TOPLEFT", feignColor, "TOPRIGHT", 70, 0)
+
+        local pendingColor = Cell.CreateColorPicker(widget, L["PENDING"], true, function(r, g, b, a)
+            widget.colorsTable["PENDING"][1] = r
+            widget.colorsTable["PENDING"][2] = g
+            widget.colorsTable["PENDING"][3] = b
+            widget.colorsTable["PENDING"][4] = a
+            widget.func()
+        end)
+        pendingColor:SetPoint("TOPLEFT", ghostColor, "BOTTOMLEFT", 0, -8)
+        pendingColor:SetEnabled(Cell.isRetail)
+
+        local acceptedColor = Cell.CreateColorPicker(widget, L["ACCEPTED"], true, function(r, g, b, a)
+            widget.colorsTable["ACCEPTED"][1] = r
+            widget.colorsTable["ACCEPTED"][2] = g
+            widget.colorsTable["ACCEPTED"][3] = b
+            widget.colorsTable["ACCEPTED"][4] = a
+            widget.func()
+        end)
+        acceptedColor:SetPoint("TOPLEFT", pendingColor, "TOPRIGHT", 70, 0)
+        acceptedColor:SetEnabled(Cell.isRetail)
+
+        local declinedColor = Cell.CreateColorPicker(widget, L["DECLINED"], true, function(r, g, b, a)
+            widget.colorsTable["DECLINED"][1] = r
+            widget.colorsTable["DECLINED"][2] = g
+            widget.colorsTable["DECLINED"][3] = b
+            widget.colorsTable["DECLINED"][4] = a
+            widget.func()
+        end)
+        declinedColor:SetPoint("TOPLEFT", acceptedColor, "TOPRIGHT", 70, 0)
+        declinedColor:SetEnabled(Cell.isRetail)
+
+        local resetBtn = Cell.CreateButton(widget, L["Reset All"], "accent", {70, 20})
+        resetBtn:SetPoint("TOPLEFT", pendingColor, "BOTTOMLEFT", 0, -8)
+        resetBtn:SetScript("OnClick", function()
+            widget.colorsTable["AFK"] = {1, 0.19, 0.19, 1}
+            widget.colorsTable["OFFLINE"] = {1, 0.19, 0.19, 1}
+            widget.colorsTable["DEAD"] = {1, 0.19, 0.19, 1}
+            widget.colorsTable["GHOST"] = {1, 0.19, 0.19, 1}
+            widget.colorsTable["FEIGN"] = {1, 1, 0.12, 1}
+            widget.colorsTable["DRINKING"] = {0.12, 0.75, 1, 1}
+            widget.colorsTable["PENDING"] = {1, 1, 0.12, 1}
+            widget.colorsTable["ACCEPTED"] = {0.12, 1, 0.12, 1}
+            widget.colorsTable["DECLINED"] = {1, 0.19, 0.19, 1}
+
+            afkColor:SetColor(widget.colorsTable["AFK"])
+            offlineColor:SetColor(widget.colorsTable["OFFLINE"])
+            deadColor:SetColor(widget.colorsTable["DEAD"])
+            ghostColor:SetColor(widget.colorsTable["GHOST"])
+            feignColor:SetColor(widget.colorsTable["FEIGN"])
+            drinkingColor:SetColor(widget.colorsTable["DRINKING"])
+            pendingColor:SetColor(widget.colorsTable["PENDING"])
+            acceptedColor:SetColor(widget.colorsTable["ACCEPTED"])
+            declinedColor:SetColor(widget.colorsTable["DECLINED"])
+
+            widget.func()
+        end)
+
+        -- callback
+        function widget:SetFunc(func)
+            widget.func = func
+        end
+
+        -- show db value
+        function widget:SetDBValue(colorsTable)
+            widget.colorsTable = colorsTable
+
+            afkColor:SetColor(colorsTable["AFK"])
+            offlineColor:SetColor(colorsTable["OFFLINE"])
+            deadColor:SetColor(colorsTable["DEAD"])
+            ghostColor:SetColor(colorsTable["GHOST"])
+            feignColor:SetColor(colorsTable["FEIGN"])
+            drinkingColor:SetColor(colorsTable["DRINKING"])
+            pendingColor:SetColor(colorsTable["PENDING"])
+            acceptedColor:SetColor(colorsTable["ACCEPTED"])
+            declinedColor:SetColor(colorsTable["DECLINED"])
+        end
+    else
+        widget = settingWidgets["statusColors"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+local function CreateSetting_CheckButton(parent)
+    local widget
+
+    if not settingWidgets["checkbutton"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_CheckButton", parent, 240, 30)
+        settingWidgets["checkbutton"] = widget
+
+        widget.cb = Cell.CreateCheckButton(widget, "checkbutton")
+        widget.cb:SetPoint("TOPLEFT", 5, -8)
+
+        -- callback
+        function widget:SetFunc(func)
+            widget.cb.onClick = function(checked)
+                func(checked)
+            end
+        end
+
+        -- show db value
+        function widget:SetDBValue(settingName, checked, tooltip)
+            widget.cb:SetChecked(checked)
+            widget.cb:SetText(L[settingName])
+            if tooltip and tooltip ~= "" then
+                if settingName == "keepInHealers" then
+                    Cell.ClearTooltips(widget.cb)
+                    if not widget.tips then
+                        widget.tips = Cell.CreateButton(widget, nil, "accent-hover", {16, 16})
+                        widget.tips.tex = widget.tips:CreateTexture(nil, "ARTWORK")
+                        widget.tips.tex:SetAllPoints(widget.tips)
+                        widget.tips.tex:SetTexture("Interface\\AddOns\\Cell\\Media\\Icons\\info2.tga")
+                        widget.tips:HookScript("OnEnter", function()
+                            local tip = widget._tipsText
+                            if not tip or tip == "" then return end
+                            CellTooltip:SetOwner(widget.tips, "ANCHOR_NONE")
+                            CellTooltip:SetPoint("BOTTOMLEFT", widget.tips, "TOPLEFT", 0, 3)
+                            CellTooltip:AddLine(L["keepInHealers"])
+                            for _, line in ipairs({string.split("|", tip)}) do
+                                if line and line ~= "" then
+                                    CellTooltip:AddLine("|cffffffff" .. line)
+                                end
+                            end
+                            CellTooltip:Show()
+                        end)
+                        widget.tips:HookScript("OnLeave", function()
+                            CellTooltip:Hide()
+                        end)
+                    end
+                    widget._tipsText = tooltip
+                    widget.tips:ClearAllPoints()
+                    widget.tips:SetPoint("LEFT", widget.cb.label, "RIGHT", 6, 0)
+                    widget.tips:Show()
+                else
+                    if widget.tips then widget.tips:Hide() end
+                    Cell.SetTooltips(widget.cb, "ANCHOR_TOPLEFT", 0, 2, L[settingName], string.split("|", tooltip))
+                end
+            else
+                if widget.tips then widget.tips:Hide() end
+                Cell.ClearTooltips(widget.cb)
+            end
+        end
+    else
+        widget = settingWidgets["checkbutton"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+local function CreateSetting_CheckButton2(parent)
+    local widget
+
+    if not settingWidgets["checkbutton2"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_CheckButton2", parent, 240, 30)
+        settingWidgets["checkbutton2"] = widget
+
+        widget.cb = Cell.CreateCheckButton(widget, "checkbutton2")
+        widget.cb:SetPoint("TOPLEFT", 5, -8)
+
+        -- callback
+        function widget:SetFunc(func)
+            widget.cb.onClick = function(checked)
+                func(checked)
+            end
+        end
+
+        -- show db value
+        function widget:SetDBValue(settingName, checked, tooltip)
+            widget.cb:SetChecked(checked)
+            widget.cb:SetText(L[settingName])
+            if tooltip then
+                Cell.SetTooltips(widget.cb, "ANCHOR_TOPLEFT", 0, 2, L[settingName], string.split("|", tooltip))
+            else
+                Cell.ClearTooltips(widget.cb)
+            end
+        end
+    else
+        widget = settingWidgets["checkbutton2"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+local function CreateSetting_CheckButton3(parent)
+    local widget
+
+    if not settingWidgets["checkbutton3"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_CheckButton3", parent, 240, 30)
+        settingWidgets["checkbutton3"] = widget
+
+        widget.cb = Cell.CreateCheckButton(widget, "checkbutton3")
+        widget.cb:SetPoint("TOPLEFT", 5, -8)
+
+        -- callback
+        function widget:SetFunc(func)
+            widget.cb.onClick = function(checked)
+                func(checked)
+            end
+        end
+
+        -- show db value
+        function widget:SetDBValue(settingName, checked, tooltip)
+            widget.cb:SetChecked(checked)
+            widget.cb:SetText(L[settingName])
+            if tooltip then
+                Cell.SetTooltips(widget.cb, "ANCHOR_TOPLEFT", 0, 2, L[settingName], string.split("|", tooltip))
+            else
+                Cell.ClearTooltips(widget.cb)
+            end
+        end
+    else
+        widget = settingWidgets["checkbutton3"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+local function CreateSetting_CheckButton4(parent)
+    local widget
+
+    if not settingWidgets["checkbutton4"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_CheckButton4", parent, 240, 30)
+        settingWidgets["checkbutton4"] = widget
+
+        widget.cb = Cell.CreateCheckButton(widget, "checkbutton4")
+        widget.cb:SetPoint("TOPLEFT", 5, -8)
+
+        -- callback
+        function widget:SetFunc(func)
+            widget.cb.onClick = function(checked)
+                func(checked)
+            end
+        end
+
+        -- show db value
+        function widget:SetDBValue(settingName, checked, tooltip)
+            widget.cb:SetChecked(checked)
+            widget.cb:SetText(L[settingName])
+            if tooltip then
+                Cell.SetTooltips(widget.cb, "ANCHOR_TOPLEFT", 0, 2, L[settingName], string.split("|", tooltip))
+            else
+                Cell.ClearTooltips(widget.cb)
+            end
+        end
+    else
+        widget = settingWidgets["checkbutton4"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+local function CreateSetting_CheckButton5(parent)
+    local widget
+
+    if not settingWidgets["checkbutton5"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_CheckButton5", parent, 240, 30)
+        settingWidgets["checkbutton5"] = widget
+
+        widget.cb = Cell.CreateCheckButton(widget, "checkbutton5")
+        widget.cb:SetPoint("TOPLEFT", 5, -8)
+
+        -- callback
+        function widget:SetFunc(func)
+            widget.cb.onClick = function(checked)
+                func(checked)
+            end
+        end
+
+        -- show db value
+        function widget:SetDBValue(settingName, checked, tooltip)
+            widget.cb:SetChecked(checked)
+            widget.cb:SetText(L[settingName])
+            if tooltip then
+                Cell.SetTooltips(widget.cb, "ANCHOR_TOPLEFT", 0, 2, L[settingName], string.split("|", tooltip))
+            else
+                Cell.ClearTooltips(widget.cb)
+            end
+        end
+    else
+        widget = settingWidgets["checkbutton5"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+-- Forward declaration: defined further below (with the Highlight Debuffs filter widget),
+local SetHighlightDebuffCheckboxState
+
+-- Non-Player Auras / Cast By You (Debuffs indicator only, via checkbutton6): both are
+-- 3-state (unchecked/checked/negated) -- see SetSafeTriStateCheckboxState below for why
+-- this one can't reuse SetHighlightDebuffCheckboxState's false-means-negated encoding.
+-- The generic checkbutton apply code in
+-- Indicators.lua only knows about ONE setting per widget (SetDBValue/SetFunc, wired to
+-- "nonPlayerAuras"), so "Cast By You" gets its own second, parallel API (SetDBValue2/
+-- SetFunc2) that Indicators.lua calls in addition, specifically for this widget.
+--
+-- IMPORTANT: "nonPlayerAuras" is an OLD field -- a since-r275 DB migration (Revise.lua)
+-- already stamped `false` into it for every existing "debuffs" indicator that had never
+-- touched it (a no-op default from when this was still a plain on/off checkbox). That
+-- makes `false` unsafe to repurpose as "negated" here: virtually every real profile
+-- already has nonPlayerAuras == false today, meaning nothing. So unlike the Highlight
+-- Debuffs filters (a newer, never-defaulted field -- false there is safe and means
+-- negated), this widget's 3rd state uses the *string* "negated" instead, and treats
+-- false exactly like nil (off) everywhere. The new "castBy"-equivalent field
+-- (debuffsCastByMe) has no such history, but uses the same "negated" string for
+-- consistency/simplicity rather than mixing two different tri-state encodings.
+local function SetSafeTriStateCheckboxState(cb, baseLabel, state)
+    cb:SetChecked(state == true or state == "negated")
+    if state == "negated" then
+        cb:SetText(baseLabel.." |cffff5555("..L["Negated"]..")|r")
+    else
+        cb:SetText(baseLabel)
+    end
+end
+
+local function NextSafeTriState(state)
+    if state == true then return "negated"
+    elseif state == "negated" then return nil
+    else return true end -- nil or false (legacy off default) both start the same way
+end
+
+local function CreateSetting_CheckButton6(parent)
+    local widget
+
+    if not settingWidgets["checkbutton6"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_CheckButton6", parent, 240, 56)
+        settingWidgets["checkbutton6"] = widget
+
+        widget.cb = Cell.CreateCheckButton(widget, "checkbutton6")
+        widget.cb:SetPoint("TOPLEFT", 5, -8)
+        widget.cb.baseLabel = "checkbutton6"
+
+        widget.cb2 = Cell.CreateCheckButton(widget, L["debuffsCastByMe"])
+        widget.cb2:SetPoint("TOPLEFT", widget.cb, "BOTTOMLEFT", 0, -8)
+        widget.cb2.baseLabel = L["debuffsCastByMe"]
+        Cell.SetTooltips(widget.cb2, "ANCHOR_TOPLEFT", 0, 2, L["debuffsCastByMe"], string.split("|", L["debuffsCastByMeTip"]))
+
+        widget.cb:SetScript("OnClick", function(self)
+            local nextState = NextSafeTriState(widget.value1)
+            widget.value1 = nextState
+            SetSafeTriStateCheckboxState(self, self.baseLabel, nextState)
+            PlaySound(nextState ~= nil and SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON or SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_OFF)
+            if widget.onClick1 then widget.onClick1(nextState) end
+        end)
+        widget.cb2:SetScript("OnClick", function(self)
+            local nextState = NextSafeTriState(widget.value2)
+            widget.value2 = nextState
+            SetSafeTriStateCheckboxState(self, self.baseLabel, nextState)
+            PlaySound(nextState ~= nil and SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON or SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_OFF)
+            if widget.onClick2 then widget.onClick2(nextState) end
+        end)
+
+        function widget:SetFunc(func)
+            widget.onClick1 = func
+        end
+
+        function widget:SetFunc2(func)
+            widget.onClick2 = func
+        end
+
+        function widget:SetDBValue(settingName, checked, tooltip)
+            widget.cb.baseLabel = L[settingName]
+            widget.value1 = checked
+            SetSafeTriStateCheckboxState(widget.cb, widget.cb.baseLabel, checked)
+            if tooltip and tooltip ~= "" then
+                Cell.ClearTooltips(widget.cb)
+                if not widget.tips then
+                    widget.tips = Cell.CreateButton(widget, nil, "accent-hover", {16, 16})
+                    widget.tips.tex = widget.tips:CreateTexture(nil, "ARTWORK")
+                    widget.tips.tex:SetAllPoints(widget.tips)
+                    widget.tips.tex:SetTexture("Interface\\AddOns\\Cell\\Media\\Icons\\info2.tga")
+                    widget.tips:HookScript("OnEnter", function()
+                        local tip = widget._tipsText
+                        if not tip or tip == "" then return end
+                        CellTooltip:SetOwner(widget.tips, "ANCHOR_NONE")
+                        CellTooltip:SetPoint("BOTTOMLEFT", widget.tips, "TOPLEFT", 0, 3)
+                        CellTooltip:AddLine(L[settingName])
+                        for _, line in ipairs({string.split("|", tip)}) do
+                            if line and line ~= "" then
+                                CellTooltip:AddLine("|cffffffff" .. line)
+                            end
+                        end
+                        CellTooltip:Show()
+                    end)
+                    widget.tips:HookScript("OnLeave", function()
+                        CellTooltip:Hide()
+                    end)
+                end
+                widget._tipsText = tooltip
+                widget.tips:ClearAllPoints()
+                widget.tips:SetPoint("LEFT", widget.cb.label, "RIGHT", 6, 0)
+                widget.tips:Show()
+            else
+                if widget.tips then widget.tips:Hide() end
+                Cell.ClearTooltips(widget.cb)
+            end
+        end
+
+        function widget:SetDBValue2(checked)
+            widget.value2 = checked
+            SetSafeTriStateCheckboxState(widget.cb2, widget.cb2.baseLabel, checked)
+        end
+    else
+        widget = settingWidgets["checkbutton6"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+-- Duration Bar (enable + reversed + color), grouped in one boxed widget so it's clear
+-- the three settings belong together.
+local function CreateSetting_DurationBarOptions(parent)
+    local widget
+
+    if not settingWidgets["durationBarOptions"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_DurationBarOptions", parent, 240, 82)
+        settingWidgets["durationBarOptions"] = widget
+
+        local enableCB = Cell.CreateCheckButton(widget, L["durationBar"], function(checked)
+            Cell.SetEnabled(checked, widget.reverseCB, widget.colorPicker)
+            if widget.onDurationBar then widget.onDurationBar(checked) end
+        end)
+        enableCB:SetPoint("TOPLEFT", 5, -8)
+        widget.enableCB = enableCB
+
+        local reverseCB = Cell.CreateCheckButton(widget, L["durationBarReverse"], function(checked)
+            if widget.onDurationBarReverse then widget.onDurationBarReverse(checked) end
+        end)
+        reverseCB:SetPoint("TOPLEFT", enableCB, "BOTTOMLEFT", 18, -8)
+        widget.reverseCB = reverseCB
+
+        local colorPicker = Cell.CreateColorPicker(widget, L["Color"], true, function(r, g, b, a)
+            widget.colorTable[1] = r
+            widget.colorTable[2] = g
+            widget.colorTable[3] = b
+            widget.colorTable[4] = a
+            if widget.onColor then widget.onColor(widget.colorTable) end
+        end)
+        colorPicker:SetPoint("TOPLEFT", reverseCB, "BOTTOMLEFT", -18, -8)
+        widget.colorPicker = colorPicker
+
+        -- callbacks
+        function widget:SetFunc(onDurationBar, onDurationBarReverse, onColor)
+            widget.onDurationBar = onDurationBar
+            widget.onDurationBarReverse = onDurationBarReverse
+            widget.onColor = onColor
+        end
+
+        -- show db values
+        function widget:SetDBValue(durationBar, durationBarReverse, colorTable)
+            enableCB:SetChecked(durationBar)
+            reverseCB:SetChecked(durationBarReverse)
+            widget.colorTable = colorTable
+            colorPicker:SetColor(colorTable)
+            Cell.SetEnabled(durationBar, reverseCB, colorPicker)
+        end
+    else
+        widget = settingWidgets["durationBarOptions"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+-- Retail-only trimmed "duration" widget: just the enable checkbox. "Round Up Duration Text"
+-- and "Display One Decimal Place When Remaining Time <" never worked on the native Retail
+-- engine -- its duration text formatter (F.GetAuraDurationFormatter, Utils.lua) is a single
+-- fixed, cached formatter that takes no per-indicator settings at all, so durationTbl[2]/[3]
+-- were silently ignored. Classic keeps the full widget (CreateSetting_Duration, untouched).
+local function CreateSetting_DurationStatic(parent)
+    local widget
+
+    if not settingWidgets["duration-static"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_DurationStatic", parent, 240, 30)
+        settingWidgets["duration-static"] = widget
+
+        widget.durationCB = Cell.CreateCheckButton(widget, L["showDuration"], function(checked)
+            widget.durationTbl[1] = checked
+            widget.func(widget.durationTbl)
+        end)
+        widget.durationCB:SetPoint("TOPLEFT", 5, -8)
+
+        -- callback
+        function widget:SetFunc(func)
+            widget.func = func
+        end
+
+        -- show db value
+        function widget:SetDBValue(durationTbl)
+            widget.durationTbl = durationTbl
+            widget.durationCB:SetChecked(durationTbl[1])
+        end
+    else
+        widget = settingWidgets["duration-static"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+local function CreateSetting_Duration(parent)
+    local widget
+
+    if not settingWidgets["duration"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_Duration", parent, 240, 97)
+        settingWidgets["duration"] = widget
+
+        -- duration
+        widget.durationCB = Cell.CreateCheckButton(widget, L["showDuration"], function(checked, self)
+            widget.durationTbl[1] = checked
+            widget.func(widget.durationTbl)
+        end)
+        widget.durationCB:SetPoint("TOPLEFT", 5, -8)
+
+        -- duration round up
+        widget.durationRoundUpCB = Cell.CreateCheckButton(widget, L["Round Up Duration Text"], function(checked, self)
+            CellDropdownList:Hide()
+            widget.durationTbl[2] = checked
+            Cell.SetEnabled(not checked, widget.durationDecimalText1, widget.durationDecimalText2, widget.durationDecimalDropdown)
+            widget.func(widget.durationTbl)
+        end)
+        widget.durationRoundUpCB:SetPoint("TOPLEFT", widget.durationCB, "BOTTOMLEFT", 0, -8)
+
+        -- duration decimal
+        widget.durationDecimalText1 = widget:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET")
+        widget.durationDecimalText1:SetPoint("TOPLEFT", widget.durationRoundUpCB, "BOTTOMLEFT", 1, -10)
+        widget.durationDecimalText1:SetText(L["Display One Decimal Place When"])
+
+        widget.durationDecimalText2 = widget:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET")
+        widget.durationDecimalText2:SetPoint("TOPLEFT", widget.durationDecimalText1, "BOTTOMLEFT", 0, -5)
+        widget.durationDecimalText2:SetText(L["Remaining Time"].." <")
+
+        widget.durationDecimalDropdown = Cell.CreateDropdown(widget, 60)
+        widget.durationDecimalDropdown:SetPoint("LEFT", widget.durationDecimalText2, "RIGHT", 5, 0)
+
+        local items = {}
+        for i = 5, 0, -1 do
+            tinsert(items, {
+                ["text"] = i == 0 and _G.NONE or i,
+                ["value"] = i,
+                ["onClick"] = function()
+                    widget.durationTbl[3] = i
+                    widget.func(widget.durationTbl)
+                end
+            })
+        end
+        widget.durationDecimalDropdown:SetItems(items)
+
+        -- callback
+        function widget:SetFunc(func)
+            -- NOTE: to notify indicator update
+            widget.func = func
+        end
+
+        -- show db value
+        function widget:SetDBValue(durationTbl)
+            widget.durationTbl = durationTbl
+            widget.durationCB:SetChecked(durationTbl[1])
+            widget.durationRoundUpCB:SetChecked(durationTbl[2])
+            Cell.SetEnabled(not durationTbl[2], widget.durationDecimalText1, widget.durationDecimalText2, widget.durationDecimalDropdown)
+            widget.durationDecimalDropdown:SetSelectedValue(durationTbl[3])
+        end
+    else
+        widget = settingWidgets["duration"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+local function CreateSetting_Stack(parent)
+    local widget
+
+    if not settingWidgets["stack"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_Stack", parent, 240, 52)
+        settingWidgets["stack"] = widget
+
+        -- show stack
+        widget.stackCB = Cell.CreateCheckButton(widget, L["showStack"], function(checked, self)
+            widget.stackTbl[1] = checked
+            widget.func(widget.stackTbl)
+            -- widget.circledStackCB:SetEnabled(checked)
+        end)
+        widget.stackCB:SetPoint("TOPLEFT", 5, -8)
+
+        -- circled stack nums
+        widget.circledStackCB = Cell.CreateCheckButton(widget, L["circledStackNums"], function(checked, self)
+            CellDropdownList:Hide()
+            widget.stackTbl[2] = checked
+            Cell.SetEnabled(not checked, widget.durationDecimalText1, widget.durationDecimalText2, widget.durationDecimalDropdown)
+            widget.func(widget.stackTbl)
+        end, L["circledStackNums"], L["Require font support"])
+        widget.circledStackCB:SetPoint("TOPLEFT", widget.stackCB, "BOTTOMLEFT", 0, -8)
+
+        -- callback
+        function widget:SetFunc(func)
+            -- NOTE: to notify indicator update
+            widget.func = func
+        end
+
+        -- show db value
+        function widget:SetDBValue(stackTbl)
+            widget.stackTbl = stackTbl
+            widget.stackCB:SetChecked(stackTbl[1])
+            widget.circledStackCB:SetChecked(stackTbl[2])
+            -- widget.circledStackCB:SetEnabled(stackTbl[1])
+        end
+    else
+        widget = settingWidgets["stack"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+local function CreateSetting_RoleTexture(parent)
+    local widget
+
+    if not settingWidgets["roleTexture"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_RoleTexture", parent, 240, 180)
+        settingWidgets["roleTexture"] = widget
+
+        widget.texture = Cell.CreateDropdown(widget, 260)
+        widget.texture:SetPoint("TOPLEFT", 5, -20)
+
+        local blizzard = F.UpperFirst(SLASH_TEXTTOSPEECH_BLIZZARD)
+        local indices = {"default", "default2", "blizzard", "blizzard2", "blizzard3", "blizzard4", "ffxiv", "miirgui", "mattui", "custom"}
+        local ICON_PATH = " |TInterface\\AddOns\\Cell\\Media\\Roles\\Preview_%s:0:4|t"
+        local options = {
+            ["default"] = _G.DEFAULT..format(ICON_PATH, "Default"),
+            ["default2"] = _G.DEFAULT.." 2"..format(ICON_PATH, "Default2"),
+            ["blizzard"] = blizzard..format(ICON_PATH, "Blizzard"),
+            ["blizzard2"] = blizzard.." 2"..format(ICON_PATH, "Blizzard2"),
+            ["blizzard3"] = blizzard.." 3"..format(ICON_PATH, "Blizzard3"),
+            ["blizzard4"] = blizzard.." 4"..format(ICON_PATH, "Blizzard4"),
+            ["ffxiv"] = "FFXIV"..format(ICON_PATH, "FFXIV"),
+            ["miirgui"] = "MiirGui"..format(ICON_PATH, "MiirGui"),
+            ["mattui"] = "MattUI"..format(ICON_PATH, "MattUI"),
+            ["custom"] = _G.CUSTOM,
+        }
+
+        local items = {}
+        for _, v in ipairs(indices) do
+            tinsert(items, {
+                ["text"] = options[v],
+                ["value"] = v,
+                ["onClick"] = function()
+                    widget.func({v, widget.eb1:GetText(), widget.eb2:GetText(), widget.eb3:GetText()})
+                    Cell.SetEnabled(v == "custom",
+                        widget.text1, widget.text2, widget.text3,
+                        widget.texture1, widget.texture2, widget.texture3,
+                        widget.eb1, widget.eb2, widget.eb3
+                    )
+                end
+            })
+        end
+        widget.texture:SetItems(items)
+
+        widget.textureText = widget:CreateFontString(nil, "OVERLAY", font_name)
+        widget.textureText:SetText(L["Texture"])
+        widget.textureText:SetPoint("BOTTOMLEFT", widget.texture, "TOPLEFT", 0, 1)
+
+        widget.eb1 = Cell.CreateEditBox(widget, 260, 20)
+        widget.eb1:SetPoint("TOPLEFT", widget.texture, "BOTTOMLEFT", 0, -25)
+        widget.eb1:SetScript("OnEnterPressed", function(self)
+            self:ClearFocus()
+            widget.func({widget.texture:GetSelected(), self:GetText(), widget.eb2:GetText(), widget.eb3:GetText()})
+            widget.texture1:SetTexture(self:GetText())
+        end)
+
+        widget.text1 = widget:CreateFontString(nil, "OVERLAY", font_name)
+        widget.text1:SetPoint("BOTTOMLEFT", widget.eb1, "TOPLEFT", 0, 1)
+        widget.text1:SetText(_G["TANK"])
+
+        widget.texture1 = widget:CreateTexture(nil, "ARTWORK")
+        widget.texture1:SetPoint("BOTTOMLEFT", widget.text1, "BOTTOMRIGHT", 3, 0)
+        widget.texture1:SetSize(16, 16)
+
+        widget.eb2 = Cell.CreateEditBox(widget, 260, 20)
+        widget.eb2:SetPoint("TOPLEFT", widget.eb1, "BOTTOMLEFT", 0, -25)
+        widget.eb2:SetScript("OnEnterPressed", function(self)
+            self:ClearFocus()
+            widget.func({widget.texture:GetSelected(), widget.eb1:GetText(), self:GetText(), widget.eb3:GetText()})
+            widget.texture2:SetTexture(self:GetText())
+        end)
+
+        widget.text2 = widget:CreateFontString(nil, "OVERLAY", font_name)
+        widget.text2:SetPoint("BOTTOMLEFT", widget.eb2, "TOPLEFT", 0, 1)
+        widget.text2:SetText(_G["HEALER"])
+
+        widget.texture2 = widget:CreateTexture(nil, "ARTWORK")
+        widget.texture2:SetPoint("BOTTOMLEFT", widget.text2, "BOTTOMRIGHT", 3, 0)
+        widget.texture2:SetSize(16, 16)
+
+        widget.eb3 = Cell.CreateEditBox(widget, 260, 20)
+        widget.eb3:SetPoint("TOPLEFT", widget.eb2, "BOTTOMLEFT", 0, -25)
+        widget.eb3:SetScript("OnEnterPressed", function(self)
+            self:ClearFocus()
+            widget.func({widget.texture:GetSelected(), widget.eb1:GetText(), widget.eb2:GetText(), self:GetText()})
+            widget.texture3:SetTexture(self:GetText())
+        end)
+
+        widget.text3 = widget:CreateFontString(nil, "OVERLAY", font_name)
+        widget.text3:SetPoint("BOTTOMLEFT", widget.eb3, "TOPLEFT", 0, 1)
+        widget.text3:SetText(_G["DAMAGER"])
+
+        widget.texture3 = widget:CreateTexture(nil, "ARTWORK")
+        widget.texture3:SetPoint("BOTTOMLEFT", widget.text3, "BOTTOMRIGHT", 3, 0)
+        widget.texture3:SetSize(16, 16)
+
+        -- callback
+        function widget:SetFunc(func)
+            widget.func = func
+        end
+
+        -- show db value
+        function widget:SetDBValue(t)
+            widget.texture:SetSelectedValue(t[1])
+            Cell.SetEnabled(t[1] == "custom",
+                widget.text1, widget.text2, widget.text3,
+                widget.texture1, widget.texture2, widget.texture3,
+                widget.eb1, widget.eb2, widget.eb3
+            )
+
+            widget.eb1:SetText(t[2])
+            widget.eb2:SetText(t[3])
+            widget.eb3:SetText(t[4])
+            widget.eb1:SetCursorPosition(0)
+            widget.eb2:SetCursorPosition(0)
+            widget.eb3:SetCursorPosition(0)
+            widget.texture1:SetTexture(t[2])
+            widget.texture2:SetTexture(t[3])
+            widget.texture3:SetTexture(t[4])
+        end
+    else
+        widget = settingWidgets["roleTexture"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+local function CreateSetting_Glow(parent)
+    local widget
+
+    if not settingWidgets["glow"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_Glow", parent, 240, 145)
+        settingWidgets["glow"] = widget
+
+        widget.glowType = Cell.CreateDropdown(widget, 110)
+        widget.glowType:SetPoint("TOPLEFT", 5, -20)
+        widget.glowType:SetItems({
+            {
+                ["text"] = L["None"],
+                ["value"] = "None",
+                ["onClick"] = function()
+                    widget:SetHeight(50)
+                    Cell.UpdateIndicatorSettingsHeight()
+                    widget.glowColor:SetColor({0.95,0.95,0.32,1})
+                    widget.glowColor:Hide()
+                    widget.glowLines:Hide()
+                    widget.glowParticles:Hide()
+                    widget.glowDuration:Hide()
+                    widget.glowFrequency:Hide()
+                    widget.glowLength:Hide()
+                    widget.glowThickness:Hide()
+                    widget.glowScale:Hide()
+                    widget.glow[1] = "None"
+                    widget.glow[2] = {0.95,0.95,0.32,1}
+                    widget.glow[3] = nil
+                    widget.glow[4] = nil
+                    widget.glow[5] = nil
+                    widget.glow[6] = nil
+                    widget.func(widget.glow)
+                end,
+            },
+            {
+                ["text"] = L["Normal"],
+                ["value"] = "Normal",
+                ["onClick"] = function()
+                    widget:SetHeight(50)
+                    Cell.UpdateIndicatorSettingsHeight()
+                    widget.glowColor:SetColor({0.95,0.95,0.32,1})
+                    widget.glowColor:Show()
+                    widget.glowLines:Hide()
+                    widget.glowParticles:Hide()
+                    widget.glowDuration:Hide()
+                    widget.glowFrequency:Hide()
+                    widget.glowLength:Hide()
+                    widget.glowThickness:Hide()
+                    widget.glowScale:Hide()
+                    widget.glow[1] = "Normal"
+                    widget.glow[2] = {0.95,0.95,0.32,1}
+                    widget.glow[3] = nil
+                    widget.glow[4] = nil
+                    widget.glow[5] = nil
+                    widget.glow[6] = nil
+                    widget.func(widget.glow)
+                end,
+            },
+            {
+                ["text"] = L["Pixel"],
+                ["value"] = "Pixel",
+                ["onClick"] = function()
+                    widget:SetHeight(145)
+                    Cell.UpdateIndicatorSettingsHeight()
+                    widget.glowColor:SetColor({0.95,0.95,0.32,1})
+                    widget.glowColor:Show()
+                    widget.glowLines:Show()
+                    widget.glowLines:SetValue(9)
+                    widget.glowFrequency:Show()
+                    widget.glowFrequency:SetValue(0.25)
+                    widget.glowLength:Show()
+                    widget.glowLength:SetValue(8)
+                    widget.glowThickness:Show()
+                    widget.glowThickness:SetValue(2)
+                    widget.glowParticles:Hide()
+                    widget.glowDuration:Hide()
+                    widget.glowScale:Hide()
+                    widget.glow[1] = "Pixel"
+                    widget.glow[2] = {0.95,0.95,0.32,1}
+                    widget.glow[3] = widget.useSmallerSize and 4 or 9
+                    widget.glow[4] = 0.25
+                    widget.glow[5] = widget.useSmallerSize and 4 or 8
+                    widget.glow[6] = widget.useSmallerSize and 1 or 2
+                    widget.func(widget.glow)
+                end,
+            },
+            {
+                ["text"] = L["Shine"],
+                ["value"] = "Shine",
+                ["onClick"] = function()
+                    widget:SetHeight(145)
+                    Cell.UpdateIndicatorSettingsHeight()
+                    widget.glowColor:SetColor({0.95,0.95,0.32,1})
+                    widget.glowColor:Show()
+                    widget.glowParticles:Show()
+                    widget.glowParticles:SetValue(9)
+                    widget.glowFrequency:Show()
+                    widget.glowFrequency:SetValue(0.5)
+                    widget.glowScale:Show()
+                    widget.glowScale:SetValue(100)
+                    widget.glowLines:Hide()
+                    widget.glowDuration:Hide()
+                    widget.glowLength:Hide()
+                    widget.glowThickness:Hide()
+                    widget.glow[1] = "Shine"
+                    widget.glow[2] = {0.95,0.95,0.32,1}
+                    widget.glow[3] = widget.useSmallerSize and 4 or 9
+                    widget.glow[4] = 0.5
+                    widget.glow[5] = widget.useSmallerSize and 0.7 or 1
+                    widget.glow[6] = nil
+                    widget.func(widget.glow)
+                end,
+            },
+            {
+                ["text"] = L["Proc"],
+                ["value"] = "Proc",
+                ["onClick"] = function()
+                    widget:SetHeight(95)
+                    Cell.UpdateIndicatorSettingsHeight()
+                    widget.glowColor:SetColor({0.95,0.95,0.32,1})
+                    widget.glowColor:Show()
+                    widget.glowDuration:Show()
+                    widget.glowDuration:SetValue(1)
+                    widget.glowParticles:Hide()
+                    widget.glowFrequency:Hide()
+                    widget.glowScale:Hide()
+                    widget.glowLines:Hide()
+                    widget.glowLength:Hide()
+                    widget.glowThickness:Hide()
+                    widget.glow[1] = "Proc"
+                    widget.glow[2] = {0.95,0.95,0.32,1}
+                    widget.glow[3] = 1
+                    widget.glow[4] = nil
+                    widget.glow[5] = nil
+                    widget.glow[6] = nil
+                    widget.func(widget.glow)
+                end,
+            },
+        })
+
+        widget.glowTypeText = widget:CreateFontString(nil, "OVERLAY", font_name)
+        widget.glowTypeText:SetText(L["Glow Type"])
+        widget.glowTypeText:SetPoint("BOTTOMLEFT", widget.glowType, "TOPLEFT", 0, 1)
+
+        widget.glowColor = Cell.CreateColorPicker(widget, L["Glow Color"], false, function(r, g, b)
+            widget.glow[2] = {r, g, b, 1}
+            widget.func(widget.glow)
+        end)
+        widget.glowColor:SetPoint("LEFT", widget.glowType, "RIGHT", 25, 0)
+
+        -- glowNumber
+        widget.glowLines = Cell.CreateSlider(L["Lines"], widget, 1, 30, 110, 1, function(value)
+            widget.glow[3] = value
+            widget.func(widget.glow)
+        end)
+        widget.glowLines:SetPoint("TOPLEFT", widget.glowType, "BOTTOMLEFT", 0, -25)
+
+        widget.glowParticles = Cell.CreateSlider(L["Particles"], widget, 1, 30, 110, 1, function(value)
+            widget.glow[3] = value
+            widget.func(widget.glow)
+        end)
+        widget.glowParticles:SetPoint("TOPLEFT", widget.glowType, "BOTTOMLEFT", 0, -25)
+
+        -- glowDuration
+        widget.glowDuration = Cell.CreateSlider(L["Duration"], widget, 0.1, 3, 110, 0.1, function(value)
+            widget.glow[3] = value
+            widget.func(widget.glow)
+        end)
+        widget.glowDuration:SetPoint("TOPLEFT", widget.glowType, "BOTTOMLEFT", 0, -25)
+
+        -- glowFrequency
+        widget.glowFrequency = Cell.CreateSlider(L["Frequency"], widget, -2, 2, 110, 0.01, function(value)
+            widget.glow[4] = value
+            widget.func(widget.glow)
+        end)
+        widget.glowFrequency:SetPoint("TOPLEFT", widget.glowLines, "TOPRIGHT", 25, 0)
+
+        -- glowLength
+        widget.glowLength = Cell.CreateSlider(L["Length"], widget, 1, 50, 110, 1, function(value)
+            widget.glow[5] = value
+            widget.func(widget.glow)
+        end)
+        widget.glowLength:SetPoint("TOPLEFT", widget.glowLines, "BOTTOMLEFT", 0, -40)
+
+        -- glowThickness
+        widget.glowThickness = Cell.CreateSlider(L["Thickness"], widget, 1, 20, 110, 1, function(value)
+            widget.glow[6] = value
+            widget.func(widget.glow)
+        end)
+        widget.glowThickness:SetPoint("TOPLEFT", widget.glowLength, "TOPRIGHT", 25, 0)
+
+        -- glowScale
+        widget.glowScale = Cell.CreateSlider(L["Scale"], widget, 50, 500, 110, 1, function(value)
+            widget.glow[5] = value/100
+            widget.func(widget.glow)
+        end, nil, true)
+        widget.glowScale:SetPoint("TOPLEFT", widget.glowLines, "BOTTOMLEFT", 0, -40)
+
+        -- callback
+        function widget:SetFunc(func)
+            widget.func = func
+        end
+
+        -- show db value
+        function widget:SetDBValue(t, hideNone)
+            widget.useSmallerSize = not hideNone -- TODO: may require addtional arg
+            widget.glowType.items[1].disabled = hideNone
+            widget.glowType.items[5].disabled = not Cell.isRetail
+
+            -- {"Pixel", {0.95,0.95,0.32,1}, 9, 0.25, 8, 2},
+            widget.glow = t
+            widget.glowType:SetSelectedValue(t[1])
+            widget.glowColor:SetColor(t[2])
+
+            if t[1] == "None" or t[1] == "Normal" then
+                if t[1] == "None" then
+                    widget.glowColor:Hide()
+                end
+                widget.glowLines:Hide()
+                widget.glowParticles:Hide()
+                widget.glowDuration:Hide()
+                widget.glowFrequency:Hide()
+                widget.glowLength:Hide()
+                widget.glowThickness:Hide()
+                widget.glowScale:Hide()
+                widget:SetHeight(50)
+            else
+                widget.glowColor:Show()
+                if t[1] == "Pixel" then
+                    widget.glowLines:Show()
+                    widget.glowLines:SetValue(t[3])
+                    widget.glowFrequency:Show()
+                    widget.glowFrequency:SetValue(t[4])
+                    widget.glowLength:Show()
+                    widget.glowLength:SetValue(t[5])
+                    widget.glowThickness:Show()
+                    widget.glowThickness:SetValue(t[6])
+
+                    widget.glowParticles:Hide()
+                    widget.glowDuration:Hide()
+                    widget.glowScale:Hide()
+                    widget:SetHeight(145)
+
+                elseif t[1] == "Shine" then
+                    widget.glowParticles:Show()
+                    widget.glowParticles:SetValue(t[3])
+                    widget.glowFrequency:Show()
+                    widget.glowFrequency:SetValue(t[4])
+                    widget.glowScale:Show()
+                    widget.glowScale:SetValue(t[5]*100)
+
+                    widget.glowLines:Hide()
+                    widget.glowDuration:Hide()
+                    widget.glowLength:Hide()
+                    widget.glowThickness:Hide()
+                    widget:SetHeight(145)
+
+                elseif t[1] == "Proc" then
+                    widget.glowDuration:Show()
+                    widget.glowDuration:SetValue(t[3])
+
+                    widget.glowLines:Hide()
+                    widget.glowParticles:Hide()
+                    widget.glowFrequency:Hide()
+                    widget.glowLength:Hide()
+                    widget.glowScale:Hide()
+                    widget.glowThickness:Hide()
+                    widget:SetHeight(95)
+                end
+            end
+        end
+    else
+        widget = settingWidgets["glow"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+local function CreateSetting_Texture(parent)
+    local widget
+
+    if not settingWidgets["texture"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_Texture", parent, 240, 100)
+        settingWidgets["texture"] = widget
+
+        widget.pathBox = Cell.CreateFrame(nil, widget, 216, 20)
+        Cell.StylizeFrame(widget.pathBox, {0.115, 0.115, 0.115, 1}, {0, 0, 0, 1})
+        widget.pathBox:SetPoint("TOPLEFT", 5, -20)
+        widget.pathBox:Show()
+
+        widget.path = widget.pathBox:CreateFontString(nil, "OVERLAY", font_name)
+        widget.path:SetPoint("LEFT", 5, 0)
+        widget.path:SetPoint("RIGHT", -5, 0)
+        widget.path:SetJustifyH("LEFT")
+        widget.path:SetWordWrap(false)
+
+        widget.button = Cell.CreateButton(widget, "...", "accent", {30, 20})
+        widget.button:SetPoint("TOPLEFT", widget.pathBox, "TOPRIGHT", P.Scale(-1), 0)
+        widget.button:SetScript("OnClick", function()
+            F.ShowTextureSelector(widget.selected, function(path)
+                widget.selected = path
+                F.FitWidth(widget.path, path, "right")
+                widget.func({path, widget.rotation:GetValue(), widget.colorPicker:GetColor()})
+            end)
+        end)
+
+        widget.pathText = widget:CreateFontString(nil, "OVERLAY", font_name)
+        widget.pathText:SetText(L["Texture"])
+        widget.pathText:SetPoint("BOTTOMLEFT", widget.pathBox, "TOPLEFT", 0, 1)
+
+        widget.rotation = Cell.CreateSlider(L["Rotation"], widget, -180, 180, 110, 1)
+        widget.rotation:SetPoint("TOPLEFT", widget.pathBox, "BOTTOMLEFT", 0, -25)
+        widget.rotation.afterValueChangedFn = function(value)
+            widget.func({widget.selected, value, widget.colorPicker:GetColor()})
+        end
+
+        widget.colorPicker = Cell.CreateColorPicker(widget, L["Color"], true, function(r, g, b, a)
+            widget.func({widget.selected, widget.rotation:GetValue(), {r, g, b, a}})
+        end)
+        widget.colorPicker:SetPoint("TOPLEFT", widget.rotation, "TOPRIGHT", 25, 0)
+
+        -- callback
+        function widget:SetFunc(func)
+            widget.func = func
+        end
+
+        -- show db value
+        function widget:SetDBValue(t)
+            widget.selected = t[1]
+            F.FitWidth(widget.path, t[1], "right")
+            widget.rotation:SetValue(t[2])
+            widget.colorPicker:SetColor(t[3])
+        end
+    else
+        widget = settingWidgets["texture"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+local function CreateAuraButtons(parent, auraButtons, auraTable, noUpDownButtons, isZeroValid, hasColorPicker, updateHeightFunc, usePicker)
+    local n = #auraTable
+
+    -- tooltip
+    if not parent.popupEditBox then
+        local popup = Cell.CreatePopupEditBox(parent)
+        popup:SetNumeric(true)
+
+        popup:SetScript("OnTextChanged", function()
+            local spellId = tonumber(popup:GetText())
+            if not spellId then
+                CellSpellTooltip:Hide()
+                return
+            end
+
+            local name, tex = F.GetSpellInfo(spellId)
+            if not name then
+                CellSpellTooltip:Hide()
+                return
+            end
+
+            CellSpellTooltip:SetOwner(popup, "ANCHOR_NONE")
+            CellSpellTooltip:SetPoint("TOPLEFT", popup, "BOTTOMLEFT", 0, -1)
+            CellSpellTooltip:SetSpellByID(spellId, tex)
+            CellSpellTooltip:Show()
+        end)
+
+        popup:HookScript("OnHide", function()
+            CellSpellTooltip:Hide()
+        end)
+    end
+
+    -- new
+    if not auraButtons[0] then
+        auraButtons[0] = Cell.CreateButton(parent, "", "transparent-accent", {20, 20})
+        auraButtons[0]:SetTexture("Interface\\AddOns\\Cell\\Media\\Icons\\new", {16, 16}, {"RIGHT", -1, 0})
+        auraButtons[0]:SetPoint("BOTTOMLEFT")
+        auraButtons[0]:SetPoint("RIGHT")
+    end
+
+    auraButtons[0]:SetScript("OnClick", function(self)
+        if usePicker then
+            Cell.ShowSpellPicker(parent, nil, function(spellId)
+                if hasColorPicker then
+                    tinsert(auraTable, {spellId, {1, 0.26667, 0.4, 1}})
+                else
+                    tinsert(auraTable, spellId)
+                end
+                parent.func(auraTable)
+                CreateAuraButtons(parent, auraButtons, auraTable, noUpDownButtons, isZeroValid, hasColorPicker, updateHeightFunc, usePicker)
+                updateHeightFunc(#auraTable, 19)
+            end)
+            return
+        end
+        local popup = Cell.CreatePopupEditBox(parent, function(text)
+            local spellId = tonumber(text)
+            local spellName = F.GetSpellInfo(spellId)
+            if (spellId and spellName) or (spellId == 0 and isZeroValid) then
+                -- update db
+                if hasColorPicker then
+                    tinsert(auraTable, {spellId, {1, 0.26667, 0.4, 1}})
+                else
+                    tinsert(auraTable, spellId)
+                end
+                parent.func(auraTable)
+                CreateAuraButtons(parent, auraButtons, auraTable, noUpDownButtons, isZeroValid, hasColorPicker, updateHeightFunc)
+                updateHeightFunc(#auraTable, 19)
+            else
+                F.Print(L["Invalid spell id."])
+            end
+        end)
+        popup:SetPoint("TOPLEFT", self)
+        popup:SetPoint("BOTTOMRIGHT", self)
+        popup:ShowEditBox("")
+        if isZeroValid then
+            parent.popupEditBox:SetTips("|cffababab"..L["Input spell id"]..", 0 = "..L["all"])
+        else
+            parent.popupEditBox:SetTips("|cffababab"..L["Input spell id"])
+        end
+    end)
+
+
+    for i, spell in ipairs(auraTable) do
+        -- creation
+        if not auraButtons[i] then
+            auraButtons[i] = Cell.CreateButton(parent, "", "transparent-accent", {20, 20})
+
+            -- spellIcon
+            auraButtons[i].spellIconBg = auraButtons[i]:CreateTexture(nil, "BORDER")
+            auraButtons[i].spellIconBg:SetSize(16, 16)
+            auraButtons[i].spellIconBg:SetPoint("TOPLEFT", 2, -2)
+            auraButtons[i].spellIconBg:SetColorTexture(0, 0, 0, 1)
+            auraButtons[i].spellIconBg:Hide()
+
+            auraButtons[i].spellIcon = auraButtons[i]:CreateTexture(nil, "OVERLAY")
+            auraButtons[i].spellIcon:SetPoint("TOPLEFT", auraButtons[i].spellIconBg, 1, -1)
+            auraButtons[i].spellIcon:SetPoint("BOTTOMRIGHT", auraButtons[i].spellIconBg, -1, 1)
+            auraButtons[i].spellIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+            auraButtons[i].spellIcon:Hide()
+
+            -- spellId text
+            auraButtons[i].spellIdText = auraButtons[i]:CreateFontString(nil, "OVERLAY", font_name)
+            auraButtons[i].spellIdText:SetPoint("LEFT", auraButtons[i].spellIconBg, "RIGHT", 5, 0)
+            auraButtons[i].spellIdText:SetPoint("RIGHT", auraButtons[i], "LEFT", 80, 0)
+            auraButtons[i].spellIdText:SetWordWrap(false)
+            auraButtons[i].spellIdText:SetJustifyH("LEFT")
+
+            -- spellName text
+            auraButtons[i].spellNameText = auraButtons[i]:CreateFontString(nil, "OVERLAY", font_name)
+            auraButtons[i].spellNameText:SetPoint("LEFT", auraButtons[i].spellIdText, "RIGHT", 5, 0)
+            auraButtons[i].spellNameText:SetPoint("RIGHT", -70, 0)
+            auraButtons[i].spellNameText:SetWordWrap(false)
+            auraButtons[i].spellNameText:SetJustifyH("LEFT")
+
+            -- del
+            auraButtons[i].del = Cell.CreateButton(auraButtons[i], "", "none", {18, 20}, true, true)
+            auraButtons[i].del:SetTexture("Interface\\AddOns\\Cell\\Media\\Icons\\delete", {16, 16}, {"CENTER", 0, 0})
+            auraButtons[i].del:SetPoint("RIGHT")
+            auraButtons[i].del.tex:SetVertexColor(0.6, 0.6, 0.6, 1)
+            auraButtons[i].del:SetScript("OnEnter", function()
+                auraButtons[i]:GetScript("OnEnter")(auraButtons[i])
+                auraButtons[i].del.tex:SetVertexColor(1, 1, 1, 1)
+            end)
+            auraButtons[i].del:SetScript("OnLeave",  function()
+                auraButtons[i]:GetScript("OnLeave")(auraButtons[i])
+                auraButtons[i].del.tex:SetVertexColor(0.6, 0.6, 0.6, 1)
+            end)
+
+            -- edit
+            -- auraButtons[i].edit = Cell.CreateButton(auraButtons[i], "", "none", {18, 20}, true, true)
+            -- auraButtons[i].edit:SetPoint("RIGHT", auraButtons[i].del, "LEFT", 1, 0)
+            -- auraButtons[i].edit:SetTexture("Interface\\AddOns\\Cell\\Media\\Icons\\info", {16, 16}, {"CENTER", 0, 0})
+            -- auraButtons[i].edit.tex:SetVertexColor(0.6, 0.6, 0.6, 1)
+            -- auraButtons[i].edit:SetScript("OnEnter", function()
+            --     auraButtons[i]:GetScript("OnEnter")(auraButtons[i])
+            --     auraButtons[i].edit.tex:SetVertexColor(1, 1, 1, 1)
+            -- end)
+            -- auraButtons[i].edit:SetScript("OnLeave",  function()
+            --     auraButtons[i]:GetScript("OnLeave")(auraButtons[i])
+            --     auraButtons[i].edit.tex:SetVertexColor(0.6, 0.6, 0.6, 1)
+            -- end)
+
+            -- down
+            auraButtons[i].down = Cell.CreateButton(auraButtons[i], "", "none", {18, 20}, true, true)
+            auraButtons[i].down:SetPoint("RIGHT", auraButtons[i].del, "LEFT", 1, 0)
+            auraButtons[i].down:SetTexture("Interface\\AddOns\\Cell\\Media\\Icons\\down", {16, 16}, {"CENTER", 0, 0})
+            auraButtons[i].down.tex:SetVertexColor(0.6, 0.6, 0.6, 1)
+            auraButtons[i].down:SetScript("OnEnter", function()
+                auraButtons[i]:GetScript("OnEnter")(auraButtons[i])
+                auraButtons[i].down.tex:SetVertexColor(1, 1, 1, 1)
+            end)
+            auraButtons[i].down:SetScript("OnLeave",  function()
+                auraButtons[i]:GetScript("OnLeave")(auraButtons[i])
+                auraButtons[i].down.tex:SetVertexColor(0.6, 0.6, 0.6, 1)
+            end)
+
+            -- up
+            auraButtons[i].up = Cell.CreateButton(auraButtons[i], "", "none", {18, 20}, true, true)
+            auraButtons[i].up:SetPoint("RIGHT", auraButtons[i].down, "LEFT", 1, 0)
+            auraButtons[i].up:SetTexture("Interface\\AddOns\\Cell\\Media\\Icons\\up", {16, 16}, {"CENTER", 0, 0})
+            auraButtons[i].up.tex:SetVertexColor(0.6, 0.6, 0.6, 1)
+            auraButtons[i].up:SetScript("OnEnter", function()
+                auraButtons[i]:GetScript("OnEnter")(auraButtons[i])
+                auraButtons[i].up.tex:SetVertexColor(1, 1, 1, 1)
+            end)
+            auraButtons[i].up:SetScript("OnLeave",  function()
+                auraButtons[i]:GetScript("OnLeave")(auraButtons[i])
+                auraButtons[i].up.tex:SetVertexColor(0.6, 0.6, 0.6, 1)
+            end)
+
+            -- color
+            auraButtons[i].colorPicker = Cell.CreateColorPicker(auraButtons[i], "", true)
+            auraButtons[i].colorPicker:SetPoint("RIGHT", auraButtons[i].up, "LEFT", -1, 0)
+            auraButtons[i].colorPicker:SetPoint("TOP", 0, -3)
+            auraButtons[i].colorPicker:HookScript("OnEnter", function()
+                auraButtons[i]:GetScript("OnEnter")(auraButtons[i])
+            end)
+            auraButtons[i].colorPicker:HookScript("OnLeave", function()
+                auraButtons[i]:GetScript("OnLeave")(auraButtons[i])
+            end)
+
+            -- spell tooltip
+            auraButtons[i]:HookScript("OnEnter", function(self)
+                if parent.popupEditBox:IsShown() then return end
+
+                local name = F.GetSpellInfo(self.spellId)
+                if not name then
+                    CellSpellTooltip:Hide()
+                    return
+                end
+
+                CellSpellTooltip:SetOwner(auraButtons[i], "ANCHOR_NONE")
+                CellSpellTooltip:SetPoint("TOPRIGHT", auraButtons[i], "TOPLEFT", -1, 0)
+                CellSpellTooltip:SetSpellByID(self.spellId, self.spellTex)
+                CellSpellTooltip:Show()
+            end)
+            auraButtons[i]:HookScript("OnLeave", function()
+                if not parent.popupEditBox:IsShown() then
+                    CellSpellTooltip:Hide()
+                end
+            end)
+        end
+
+        local color
+        if hasColorPicker then
+            color = spell[2]
+            spell = spell[1]
+        end
+
+        if spell == 0 then
+            auraButtons[i].spellIdText:SetText(spell)
+            auraButtons[i].spellId = nil
+            auraButtons[i].spellNameText:SetText("|cff22ff22"..L["all"])
+            auraButtons[i].spellIconBg:Hide()
+            auraButtons[i].spellIcon:Hide()
+        else
+            local name, icon = F.GetSpellInfo(spell)
+            auraButtons[i].spellIdText:SetText(spell)
+            auraButtons[i].spellId = spell
+            auraButtons[i].spellTex = icon
+            auraButtons[i].spellNameText:SetText(name and (name .. (F.GetSpellRankSuffix and F.GetSpellRankSuffix(spell) or "")) or "|cffff2222"..L["Invalid"])
+            if icon then
+                auraButtons[i].spellIcon:SetTexture(icon)
+                auraButtons[i].spellIconBg:Show()
+                auraButtons[i].spellIcon:Show()
+            else
+                auraButtons[i].spellIconBg:Hide()
+                auraButtons[i].spellIcon:Hide()
+            end
+        end
+
+        -- points
+        auraButtons[i]:ClearAllPoints()
+        if i == 1 then -- first
+            auraButtons[i]:SetPoint("TOPLEFT")
+            -- update buttons
+            if noUpDownButtons then
+                auraButtons[i].up:Hide()
+                auraButtons[i].down:Hide()
+            else
+                auraButtons[i].up:Hide()
+                auraButtons[i].down:Show()
+            end
+        elseif i == n then -- last
+            auraButtons[i]:SetPoint("TOPLEFT", auraButtons[i-1], "BOTTOMLEFT", 0, P.Scale(1))
+            -- update buttons
+            if noUpDownButtons then
+                auraButtons[i].up:Hide()
+                auraButtons[i].down:Hide()
+            else
+                auraButtons[i].up:Show()
+                auraButtons[i].down:Hide()
+            end
+        else
+            auraButtons[i]:SetPoint("TOPLEFT", auraButtons[i-1], "BOTTOMLEFT", 0, P.Scale(1))
+            -- update buttons
+            if noUpDownButtons then
+                auraButtons[i].down:Hide()
+                auraButtons[i].up:Hide()
+            else
+                auraButtons[i].down:Show()
+                auraButtons[i].up:Show()
+            end
+        end
+
+        -- update spellNameText width
+        if noUpDownButtons then
+            auraButtons[i].spellNameText:SetPoint("RIGHT", auraButtons[i].del, "LEFT", -5, 0)
+        elseif hasColorPicker then
+            auraButtons[i].spellNameText:SetPoint("RIGHT", auraButtons[i].colorPicker, "LEFT", -5, 0)
+        else
+            auraButtons[i].spellNameText:SetPoint("RIGHT", auraButtons[i].up, "LEFT", -5, 0)
+        end
+
+        auraButtons[i]:SetPoint("RIGHT")
+        auraButtons[i]:Show()
+
+        -- functions
+        auraButtons[i]:SetScript("OnClick", function()
+            if usePicker then
+                local currentId = auraButtons[i].spellId
+                Cell.ShowSpellPicker(parent, currentId, function(spellId)
+                    local spellName, spellIcon = F.GetSpellInfo(spellId)
+                    if spellName then
+                        auraButtons[i].spellIdText:SetText(spellId)
+                        auraButtons[i].spellId = spellId
+                        auraButtons[i].spellTex = spellIcon
+                        auraButtons[i].spellNameText:SetText(spellName)
+                        if hasColorPicker then
+                            auraTable[i][1] = spellId
+                        else
+                            auraTable[i] = spellId
+                        end
+                        parent.func(auraTable)
+                        if spellIcon then
+                            auraButtons[i].spellIcon:SetTexture(spellIcon)
+                            auraButtons[i].spellIconBg:Show()
+                            auraButtons[i].spellIcon:Show()
+                        else
+                            auraButtons[i].spellIconBg:Hide()
+                            auraButtons[i].spellIcon:Hide()
+                        end
+                    end
+                end)
+                return
+            end
+            local popup = Cell.CreatePopupEditBox(parent, function(text)
+                local spellId = tonumber(text)
+                if spellId == 0 then
+                    if isZeroValid then
+                        auraButtons[i].spellIdText:SetText("0")
+                        auraButtons[i].spellId = nil
+                        auraButtons[i].spellNameText:SetText("|cff22ff22"..L["all"])
+                        auraButtons[i].spellIconBg:Hide()
+                        auraButtons[i].spellIcon:Hide()
+                    else
+                        F.Print(L["Invalid spell id."])
+                    end
+                else
+                    local spellName, spellIcon = F.GetSpellInfo(spellId)
+                    if spellId and spellName then
+                        -- update text
+                        auraButtons[i].spellIdText:SetText(spellId)
+                        auraButtons[i].spellId = spellId
+                        auraButtons[i].spellTex = spellIcon
+                        auraButtons[i].spellNameText:SetText(spellName)
+                        -- update db
+                        if hasColorPicker then
+                            auraTable[i][1] = spellId
+                        else
+                            auraTable[i] = spellId
+                        end
+                        parent.func(auraTable)
+                        if spellIcon then
+                            auraButtons[i].spellIcon:SetTexture(spellIcon)
+                            auraButtons[i].spellIconBg:Show()
+                            auraButtons[i].spellIcon:Show()
+                        else
+                            auraButtons[i].spellIconBg:Hide()
+                            auraButtons[i].spellIcon:Hide()
+                        end
+                    else
+                        F.Print(L["Invalid spell id."])
+                    end
+                end
+
+            end)
+            popup:SetPoint("TOPLEFT", auraButtons[i])
+            popup:SetPoint("BOTTOMRIGHT", auraButtons[i])
+            popup:ShowEditBox(auraButtons[i].spellId or "")
+            parent.popupEditBox:SetTips("|cffababab"..L["Input spell id"])
+        end)
+
+        auraButtons[i].del:SetScript("OnClick", function()
+            tremove(auraTable, i)
+            parent.func(auraTable)
+            CreateAuraButtons(parent, auraButtons, auraTable, noUpDownButtons, isZeroValid, hasColorPicker, updateHeightFunc, usePicker)
+            updateHeightFunc(#auraTable, -19)
+        end)
+
+        auraButtons[i].up:SetScript("OnClick", function()
+            local temp = auraTable[i-1]
+            auraTable[i-1] = auraTable[i]
+            auraTable[i] = temp
+            parent.func(auraTable)
+            CreateAuraButtons(parent, auraButtons, auraTable, noUpDownButtons, isZeroValid, hasColorPicker, updateHeightFunc, usePicker)
+        end)
+
+        auraButtons[i].down:SetScript("OnClick", function()
+            local temp = auraTable[i+1]
+            auraTable[i+1] = auraTable[i]
+            auraTable[i] = temp
+            parent.func(auraTable)
+            CreateAuraButtons(parent, auraButtons, auraTable, noUpDownButtons, isZeroValid, hasColorPicker, updateHeightFunc, usePicker)
+        end)
+
+        if hasColorPicker then
+            auraButtons[i].colorPicker:Show()
+            auraButtons[i].colorPicker:SetColor(color)
+            auraButtons[i].colorPicker.onConfirm = function(r, g, b, a)
+                auraTable[i][2][1] = r
+                auraTable[i][2][2] = g
+                auraTable[i][2][3] = b
+                auraTable[i][2][4] = a
+                parent.func(auraTable)
+            end
+        else
+            auraButtons[i].colorPicker:Hide()
+        end
+    end
+
+    -- check up down
+    if n == 1 then
+        auraButtons[1].up:Hide()
+        auraButtons[1].down:Hide()
+    end
+
+    for i = n+1, #auraButtons do
+        auraButtons[i]:Hide()
+        auraButtons[i]:ClearAllPoints()
+    end
+end
+
+local function GetExportString(t)
+    local s = ""
+    local n = 0
+    for i, id in ipairs(t) do
+        local color = ""
+        if type(id) == "table" then
+            color = " {"
+            for j, c in pairs(id[2]) do
+                color = color .. F.Round(c, 3)
+                if j ~= 4 then
+                    color = color .. ","
+                end
+            end
+            color = color .. "}"
+            id = id[1]
+        end
+        local name = F.GetSpellInfo(id)
+        if name then
+            s = s .. (i == 1 and "" or "\n") .. id .. ", -- " .. name .. color
+            n = n + 1
+        end
+    end
+    return s, n
+end
+
+local auraButtons = {}
+local auraImportExportFrame
+
+local function ConvertAuraData(text)
+    if not text or text == "" then return end
+
+    local data = {}
+
+    if auraImportExportFrame.parent.hasColorPicker then
+        for i, line in pairs({strsplit("\n", text)}) do
+            line = strtrim(line)
+            if line ~= "" then
+                local id = strmatch(line, "^(%d+).*$")
+                id = tonumber(id)
+                if id then
+                    local color = strmatch(line, "^%d+, %-%- .+ %{(.+)%}$")
+                    if color then
+                        color = F.StringToTable(color, ",", true)
+                    else
+                        color = {1, 0.26667, 0.4, 1}
+                    end
+                    tinsert(data, {id, color})
+                end
+            end
+        end
+    else
+        for i, line in pairs({strsplit("\n", text)}) do
+            line = strtrim(line)
+            local id = strmatch(line, "^(%d+),.+$")
+            id = tonumber(id)
+            if id then
+                tinsert(data, id)
+            end
+        end
+    end
+
+    return data
+end
+
+local function CreateSetting_Auras(parent, index)
+    local widget
+
+    if not auraImportExportFrame then
+        auraImportExportFrame = Cell.CreateFrame(nil, parent, 1, 200)
+        auraImportExportFrame:SetBackdropBorderColor(Cell.GetAccentColorRGB())
+        auraImportExportFrame:EnableMouse(true)
+        auraImportExportFrame:Hide()
+
+        function auraImportExportFrame:ShowUp()
+            auraImportExportFrame:SetParent(auraImportExportFrame.parent)
+            auraImportExportFrame:SetPoint("TOPLEFT")
+            auraImportExportFrame:SetPoint("TOPRIGHT")
+            auraImportExportFrame:SetToplevel(true)
+            auraImportExportFrame:Show()
+        end
+
+        auraImportExportFrame:SetScript("OnHide", function()
+            auraImportExportFrame:Hide()
+        end)
+
+        auraImportExportFrame.textArea = Cell.CreateScrollEditBox(auraImportExportFrame, function(eb, userChanged)
+            if userChanged then
+                if auraImportExportFrame.isImport then
+                    local data = ConvertAuraData(eb:GetText())
+                    if data and #data ~= 0 then
+                        auraImportExportFrame.data = data
+                        auraImportExportFrame.info:SetText(Cell.GetAccentColorString()..L["Spells"]..":|r "..#data)
+                        auraImportExportFrame.importBtn:SetEnabled(true)
+                    else
+                        auraImportExportFrame.info:SetText(Cell.GetAccentColorString()..L["Spells"]..":|r 0")
+                        auraImportExportFrame.importBtn:SetEnabled(false)
+                    end
+                else
+                    eb:SetText(auraImportExportFrame.exported)
+                    eb:SetCursorPosition(0)
+                    eb:HighlightText()
+                end
+            end
+        end)
+        Cell.StylizeFrame(auraImportExportFrame.textArea.scrollFrame, {0, 0, 0, 0}, Cell.GetAccentColorTable())
+        auraImportExportFrame.textArea:SetPoint("TOPLEFT", 5, -22)
+        auraImportExportFrame.textArea:SetPoint("BOTTOMRIGHT", -5, 5)
+        auraImportExportFrame.textArea.eb:SetAutoFocus(true)
+
+        auraImportExportFrame.textArea.eb:SetScript("OnEditFocusGained", function() auraImportExportFrame.textArea.eb:HighlightText() end)
+        auraImportExportFrame.textArea.eb:SetScript("OnMouseUp", function()
+            if not auraImportExportFrame.isImport then
+                auraImportExportFrame.textArea.eb:HighlightText()
+            end
+        end)
+
+        auraImportExportFrame.info = auraImportExportFrame:CreateFontString(nil, "OVERLAY", font_name)
+        auraImportExportFrame.info:SetPoint("BOTTOMLEFT", auraImportExportFrame.textArea, "TOPLEFT", 0, 3)
+
+        auraImportExportFrame.closeBtn = Cell.CreateButton(auraImportExportFrame, "×", "red", {18, 18}, false, false, "CELL_FONT_SPECIAL", "CELL_FONT_SPECIAL")
+        auraImportExportFrame.closeBtn:SetPoint("BOTTOMRIGHT", auraImportExportFrame.textArea, "TOPRIGHT", 0, 1)
+        auraImportExportFrame.closeBtn:SetScript("OnClick", function() auraImportExportFrame:Hide() end)
+
+        auraImportExportFrame.importBtn = Cell.CreateButton(auraImportExportFrame, L["Import"], "green", {57, 18})
+        auraImportExportFrame.importBtn:SetPoint("TOPRIGHT", auraImportExportFrame.closeBtn, "TOPLEFT", P.Scale(1), 0)
+        auraImportExportFrame.importBtn:SetScript("OnClick", function()
+            -- replace old
+            wipe(auraImportExportFrame.parent.t)
+            for _, data in pairs(auraImportExportFrame.data) do
+                tinsert(auraImportExportFrame.parent.t, data)
+            end
+            -- update list
+            auraImportExportFrame.parent:SetDBValue(auraImportExportFrame.parent.title,
+                auraImportExportFrame.parent.t,
+                auraImportExportFrame.parent.noUpDownButtons,
+                auraImportExportFrame.parent.isZeroValid,
+                auraImportExportFrame.parent.hasColorPicker
+            )
+            auraImportExportFrame:Hide()
+            -- update height
+            Cell.UpdateIndicatorSettingsHeight()
+            -- event
+            auraImportExportFrame.parent.frame.func(auraImportExportFrame.parent.t)
+        end)
+    end
+
+    if not settingWidgets["auras"..index] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_Auras"..index, parent, 240, 128)
+        settingWidgets["auras"..index] = widget
+
+        widget.frame = Cell.CreateFrame(nil, widget, 20, 20)
+        widget.frame:SetPoint("TOPLEFT", 5, -22)
+        widget.frame:SetPoint("RIGHT", -5, 0)
+        widget.frame:Show()
+        Cell.StylizeFrame(widget.frame, {0.15, 0.15, 0.15, 1})
+
+        widget.text = widget:CreateFontString(nil, "OVERLAY", font_name)
+        widget.text:SetPoint("BOTTOMLEFT", widget.frame, "TOPLEFT", 0, 3)
+
+        widget.export = Cell.CreateButton(widget, nil, "accent-hover", {21, 17}, nil, nil, nil, nil, nil, L["Export"])
+        widget.export:SetPoint("BOTTOMRIGHT", widget.frame, "TOPRIGHT", 0, 1)
+        widget.export:SetTexture("Interface\\AddOns\\Cell\\Media\\Icons\\export", {15, 15}, {"CENTER", 0, 0})
+        widget.export:SetScript("OnClick", function()
+            auraImportExportFrame.isImport = false
+            auraImportExportFrame.parent = widget
+            local n
+            auraImportExportFrame.exported, n = GetExportString(widget.t)
+            auraImportExportFrame.info:SetText(Cell.GetAccentColorString()..L["Spells"]..":|r "..n)
+            auraImportExportFrame.textArea:SetText(auraImportExportFrame.exported)
+            auraImportExportFrame.importBtn:Hide()
+            auraImportExportFrame:ShowUp()
+            -- hide editbox
+            if widget.frame.popupEditBox then
+                widget.frame.popupEditBox:Hide()
+            end
+        end)
+
+        widget.import = Cell.CreateButton(widget, nil, "accent-hover", {21, 17}, nil, nil, nil, nil, nil, L["Import"])
+        widget.import:SetPoint("BOTTOMRIGHT", widget.export, "BOTTOMLEFT", -1, 0)
+        widget.import:SetTexture("Interface\\AddOns\\Cell\\Media\\Icons\\import", {15, 15}, {"CENTER", 0, 0})
+        widget.import:SetScript("OnClick", function()
+            auraImportExportFrame.isImport = true
+            auraImportExportFrame.parent = widget
+            auraImportExportFrame.textArea:SetText("")
+            auraImportExportFrame.info:SetText(Cell.GetAccentColorString()..L["Spells"]..":|r 0")
+            auraImportExportFrame.importBtn:Show()
+            auraImportExportFrame.importBtn:SetEnabled(false)
+            auraImportExportFrame:ShowUp()
+            -- hide editbox
+            if widget.frame.popupEditBox then
+                widget.frame.popupEditBox:Hide()
+            end
+        end)
+
+        widget.clear = Cell.CreateButton(widget, nil, "accent-hover", {21, 17}, nil, nil, nil, nil, nil, L["Clear"], "|cffffb5c5Ctrl+"..L["Left-Click"])
+        widget.clear:SetPoint("BOTTOMRIGHT", widget.import, "BOTTOMLEFT", -1, 0)
+        widget.clear:SetTexture("Interface\\AddOns\\Cell\\Media\\Icons\\trash", {15, 15}, {"CENTER", 0, 0})
+        widget.clear:SetScript("OnClick", function(self, button)
+            if button == "LeftButton" and IsControlKeyDown() then
+                wipe(widget.t)
+                -- update list
+                widget:SetDBValue(widget.title, widget.t, widget.noUpDownButtons, widget.isZeroValid, widget.hasColorPicker)
+                -- update height
+                Cell.UpdateIndicatorSettingsHeight()
+                -- event
+                widget.frame.func(widget.t)
+                -- hide editbox
+                if widget.frame.popupEditBox then
+                    widget.frame.popupEditBox:Hide()
+                end
+            end
+        end)
+
+        -- callback
+        function widget:SetFunc(func)
+            widget.frame.func = func
+        end
+
+    -- show db value
+    function widget:SetDBValue(title, t, noUpDownButtons, isZeroValid, hasColorPicker)
+        widget.title = title
+        widget.t = t or {}
+        widget.noUpDownButtons = noUpDownButtons
+        widget.isZeroValid = isZeroValid
+        widget.hasColorPicker = hasColorPicker
+
+        widget.text:SetText(title)
+
+        if not auraButtons[index] then auraButtons[index] = {} end
+
+        CreateAuraButtons(widget.frame, auraButtons[index], widget.t, noUpDownButtons, isZeroValid, hasColorPicker, function(n, diff)
+            local height = (n + 1) * P.Scale(20) - n * P.Scale(1)
+            widget.frame:SetHeight(height)
+            widget:SetHeight(height + P.Scale(22) + P.Scale(7))
+            if diff then parent:SetHeight(parent:GetHeight() + P.Scale(diff)) end
+        end, widget.usePicker)
+
+        local height = (#widget.t + 1) * P.Scale(20) - #widget.t * P.Scale(1)
+        widget.frame:SetHeight(height)
+        widget:SetHeight(height + P.Scale(22) + P.Scale(7))
+    end
+    else
+        widget = settingWidgets["auras"..index]
+    end
+
+    widget:Show()
+    return widget
+end
+
+-------------------------------------------------
+-- CreateSetting_AurasPicker
+-------------------------------------------------
+local function CreateSetting_AurasPicker(parent)
+    local widget
+    if not auraImportExportFrame then
+        auraImportExportFrame = Cell.CreateFrame(nil, parent, 1, 200)
+        auraImportExportFrame:SetBackdropBorderColor(Cell.GetAccentColorRGB())
+        auraImportExportFrame:EnableMouse(true)
+        auraImportExportFrame:Hide()
+
+        function auraImportExportFrame:ShowUp()
+            auraImportExportFrame:SetParent(auraImportExportFrame.parent)
+            auraImportExportFrame:SetPoint("TOPLEFT")
+            auraImportExportFrame:SetPoint("TOPRIGHT")
+            auraImportExportFrame:SetToplevel(true)
+            auraImportExportFrame:Show()
+        end
+
+        auraImportExportFrame:SetScript("OnHide", function()
+            auraImportExportFrame:Hide()
+        end)
+
+        auraImportExportFrame.textArea = Cell.CreateScrollEditBox(auraImportExportFrame, function(eb, userChanged)
+            if userChanged then
+                if auraImportExportFrame.isImport then
+                    local data = ConvertAuraData(eb:GetText())
+                    if data and #data ~= 0 then
+                        auraImportExportFrame.data = data
+                        auraImportExportFrame.info:SetText(Cell.GetAccentColorString()..L["Spells"]..":|r "..#data)
+                        auraImportExportFrame.importBtn:SetEnabled(true)
+                    else
+                        auraImportExportFrame.info:SetText(Cell.GetAccentColorString()..L["Spells"]..":|r 0")
+                        auraImportExportFrame.importBtn:SetEnabled(false)
+                    end
+                else
+                    eb:SetText(auraImportExportFrame.exported)
+                    eb:SetCursorPosition(0)
+                    eb:HighlightText()
+                end
+            end
+        end)
+        Cell.StylizeFrame(auraImportExportFrame.textArea.scrollFrame, {0, 0, 0, 0}, Cell.GetAccentColorTable())
+        auraImportExportFrame.textArea:SetPoint("TOPLEFT", 5, -22)
+        auraImportExportFrame.textArea:SetPoint("BOTTOMRIGHT", -5, 5)
+        auraImportExportFrame.textArea.eb:SetAutoFocus(true)
+
+        auraImportExportFrame.textArea.eb:SetScript("OnEditFocusGained", function() auraImportExportFrame.textArea.eb:HighlightText() end)
+        auraImportExportFrame.textArea.eb:SetScript("OnMouseUp", function()
+            if not auraImportExportFrame.isImport then
+                auraImportExportFrame.textArea.eb:HighlightText()
+            end
+        end)
+
+        auraImportExportFrame.info = auraImportExportFrame:CreateFontString(nil, "OVERLAY", font_name)
+        auraImportExportFrame.info:SetPoint("BOTTOMLEFT", auraImportExportFrame.textArea, "TOPLEFT", 0, 3)
+
+        auraImportExportFrame.closeBtn = Cell.CreateButton(auraImportExportFrame, "×", "red", {18, 18}, false, false, "CELL_FONT_SPECIAL", "CELL_FONT_SPECIAL")
+        auraImportExportFrame.closeBtn:SetPoint("BOTTOMRIGHT", auraImportExportFrame.textArea, "TOPRIGHT", 0, 1)
+        auraImportExportFrame.closeBtn:SetScript("OnClick", function() auraImportExportFrame:Hide() end)
+
+        auraImportExportFrame.importBtn = Cell.CreateButton(auraImportExportFrame, L["Import"], "green", {57, 18})
+        auraImportExportFrame.importBtn:SetPoint("TOPRIGHT", auraImportExportFrame.closeBtn, "TOPLEFT", P.Scale(1), 0)
+        auraImportExportFrame.importBtn:SetScript("OnClick", function()
+            wipe(auraImportExportFrame.parent.t)
+            for _, data in pairs(auraImportExportFrame.data) do
+                tinsert(auraImportExportFrame.parent.t, data)
+            end
+            auraImportExportFrame.parent:SetDBValue(auraImportExportFrame.parent.title,
+                auraImportExportFrame.parent.t,
+                auraImportExportFrame.parent.noUpDownButtons,
+                auraImportExportFrame.parent.isZeroValid,
+                auraImportExportFrame.parent.hasColorPicker
+            )
+            auraImportExportFrame:Hide()
+            Cell.UpdateIndicatorSettingsHeight()
+            auraImportExportFrame.parent.frame.func(auraImportExportFrame.parent.t)
+        end)
+    end
+
+    if not settingWidgets["auras-picker"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_AurasPicker", parent, 240, 128)
+        settingWidgets["auras-picker"] = widget
+        widget.usePicker = true
+
+        widget.frame = Cell.CreateFrame(nil, widget, 20, 20)
+        widget.frame:SetPoint("TOPLEFT", 5, -22)
+        widget.frame:SetPoint("RIGHT", -5, 0)
+        widget.frame:Show()
+        Cell.StylizeFrame(widget.frame, {0.15, 0.15, 0.15, 1})
+
+        widget.text = widget:CreateFontString(nil, "OVERLAY", font_name)
+        widget.text:SetPoint("BOTTOMLEFT", widget.frame, "TOPLEFT", 0, 3)
+
+        widget.export = Cell.CreateButton(widget, nil, "accent-hover", {21, 17}, nil, nil, nil, nil, nil, L["Export"])
+        widget.export:SetPoint("BOTTOMRIGHT", widget.frame, "TOPRIGHT", 0, 1)
+        widget.export:SetTexture("Interface\\AddOns\\Cell\\Media\\Icons\\export", {15, 15}, {"CENTER", 0, 0})
+        widget.export:SetScript("OnClick", function()
+            auraImportExportFrame.isImport = false
+            auraImportExportFrame.parent = widget
+            local n
+            auraImportExportFrame.exported, n = GetExportString(widget.t)
+            auraImportExportFrame.info:SetText(Cell.GetAccentColorString()..L["Spells"]..":|r "..n)
+            auraImportExportFrame.textArea:SetText(auraImportExportFrame.exported)
+            auraImportExportFrame.importBtn:Hide()
+            auraImportExportFrame:ShowUp()
+            if widget.frame.popupEditBox then
+                widget.frame.popupEditBox:Hide()
+            end
+        end)
+
+        widget.import = Cell.CreateButton(widget, nil, "accent-hover", {21, 17}, nil, nil, nil, nil, nil, L["Import"])
+        widget.import:SetPoint("BOTTOMRIGHT", widget.export, "BOTTOMLEFT", -1, 0)
+        widget.import:SetTexture("Interface\\AddOns\\Cell\\Media\\Icons\\import", {15, 15}, {"CENTER", 0, 0})
+        widget.import:SetScript("OnClick", function()
+            auraImportExportFrame.isImport = true
+            auraImportExportFrame.parent = widget
+            auraImportExportFrame.textArea:SetText("")
+            auraImportExportFrame.info:SetText(Cell.GetAccentColorString()..L["Spells"]..":|r 0")
+            auraImportExportFrame.importBtn:Show()
+            auraImportExportFrame.importBtn:SetEnabled(false)
+            auraImportExportFrame:ShowUp()
+            if widget.frame.popupEditBox then
+                widget.frame.popupEditBox:Hide()
+            end
+        end)
+
+        widget.clear = Cell.CreateButton(widget, nil, "accent-hover", {21, 17}, nil, nil, nil, nil, nil, L["Clear"], "|cffffb5c5Ctrl+"..L["Left-Click"])
+        widget.clear:SetPoint("BOTTOMRIGHT", widget.import, "BOTTOMLEFT", -1, 0)
+        widget.clear:SetTexture("Interface\\AddOns\\Cell\\Media\\Icons\\trash", {15, 15}, {"CENTER", 0, 0})
+        widget.clear:SetScript("OnClick", function(self, button)
+            if button == "LeftButton" and IsControlKeyDown() then
+                wipe(widget.t)
+                widget:SetDBValue(widget.title, widget.t, widget.noUpDownButtons, widget.isZeroValid, widget.hasColorPicker)
+                Cell.UpdateIndicatorSettingsHeight()
+                widget.frame.func(widget.t)
+                if widget.frame.popupEditBox then
+                    widget.frame.popupEditBox:Hide()
+                end
+            end
+        end)
+
+        function widget:SetFunc(func)
+            widget.frame.func = func
+        end
+
+        function widget:SetDBValue(title, t, noUpDownButtons, isZeroValid, hasColorPicker)
+            widget.title = title
+            widget.t = t
+            widget.noUpDownButtons = noUpDownButtons
+            widget.isZeroValid = isZeroValid
+            widget.hasColorPicker = hasColorPicker
+
+            widget.text:SetText(title)
+
+            local pickerIndex = 3
+            if not auraButtons[pickerIndex] then auraButtons[pickerIndex] = {} end
+
+            CreateAuraButtons(widget.frame, auraButtons[pickerIndex], t, noUpDownButtons, isZeroValid, hasColorPicker, function(n, diff)
+                local height = (n + 1) * P.Scale(20) - n * P.Scale(1)
+                widget.frame:SetHeight(height)
+                widget:SetHeight(height + P.Scale(22) + P.Scale(7))
+                if diff then parent:SetHeight(parent:GetHeight() + P.Scale(diff)) end
+            end, true)
+
+            local height = (#t + 1) * P.Scale(20) - #t * P.Scale(1)
+            widget.frame:SetHeight(height)
+            widget:SetHeight(height + P.Scale(22) + P.Scale(7))
+        end
+    else
+        widget = settingWidgets["auras-picker"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+--[=[
+local cleuAuraButtons = {}
+local function CreateCleuAuraButtons(parent, auraTable, updateHeightFunc)
+    local n = #auraTable
+
+    -- tooltip
+    if not parent.inputs then
+        local inputs = CreateFrame("Frame", nil, parent, "BackdropTemplate")
+        Cell.StylizeFrame(inputs, {0.115, 0.115, 0.115, 1})
+        inputs:SetFrameStrata("DIALOG")
+        inputs:Hide()
+        inputs:SetScript("OnHide", function()
+            inputs:Hide()
+            inputs.spellEB.isValid = false
+            inputs.durationEB.isValid = false
+            inputs.spellEB:SetText("")
+            inputs.durationEB:SetText("")
+            inputs.okBtn:SetEnabled(false)
+            CellSpellTooltip:Hide()
+        end)
+
+        local function Validate()
+            inputs.okBtn:SetEnabled(inputs.spellEB.isValid and inputs.durationEB.isValid)
+        end
+
+        local spellEB = Cell.CreateEditBox(inputs, 20, 20, false, false, true)
+        spellEB:SetAutoFocus(true)
+        spellEB.tip = spellEB:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET")
+        spellEB.tip:SetTextColor(0.4, 0.4, 0.4, 1)
+        spellEB.tip:SetText("ID")
+        spellEB.tip:SetPoint("RIGHT", -5, 0)
+        spellEB:SetScript("OnTextChanged", function()
+            spellEB.isValid = false
+            local spellId = tonumber(spellEB:GetText())
+            if not spellId then
+                CellSpellTooltip:Hide()
+                Validate()
+                return
+            end
+
+            local name = F.GetSpellInfo(spellId)
+            if not name then
+                CellSpellTooltip:Hide()
+                Validate()
+                return
+            end
+
+            CellSpellTooltip:SetOwner(spellEB, "ANCHOR_NONE")
+            CellSpellTooltip:SetPoint("TOPLEFT", spellEB, "BOTTOMLEFT", 0, -1)
+            CellSpellTooltip:SetSpellByID(spellId)
+            CellSpellTooltip:Show()
+            spellEB.isValid = true
+            Validate()
+        end)
+        spellEB:HookScript("OnHide", function()
+            CellSpellTooltip:Hide()
+        end)
+        spellEB:SetScript("OnEscapePressed", function()
+            inputs:Hide()
+        end)
+
+        local durationEB = Cell.CreateEditBox(inputs, 20, 20, false, false, true)
+        durationEB:SetAutoFocus(true)
+        durationEB:SetMaxLetters(2)
+        durationEB.tip = durationEB:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET")
+        durationEB.tip:SetTextColor(0.4, 0.4, 0.4, 1)
+        durationEB.tip:SetText(_G.AUCTION_DURATION)
+        durationEB.tip:SetPoint("RIGHT", -5, 0)
+        durationEB:SetScript("OnTextChanged", function()
+            durationEB.isValid = false
+            local duration = tonumber(durationEB:GetText())
+            if not duration or duration == 0 then
+                Validate()
+                return
+            end
+            durationEB.isValid = true
+            Validate()
+        end)
+        durationEB:SetScript("OnEscapePressed", function()
+            inputs:Hide()
+        end)
+
+        spellEB:SetScript("OnTabPressed", function()
+            durationEB:SetFocus(true)
+        end)
+        durationEB:SetScript("OnTabPressed", function()
+            spellEB:SetFocus(true)
+        end)
+
+        local okBtn = Cell.CreateButton(inputs, "OK", "green", {40, 20})
+        okBtn:SetEnabled(false)
+
+        spellEB:SetPoint("TOPLEFT")
+        spellEB:SetPoint("BOTTOMRIGHT", inputs, "BOTTOMLEFT", 120, 0)
+        okBtn:SetPoint("BOTTOMRIGHT")
+        okBtn:SetPoint("TOPLEFT", inputs, "TOPRIGHT", -30, 0)
+        durationEB:SetPoint("TOPLEFT", spellEB, "TOPRIGHT", -1, 0)
+        durationEB:SetPoint("BOTTOMRIGHT", okBtn, "BOTTOMLEFT", 1, 0)
+
+        parent.inputs = inputs
+        inputs.spellEB = spellEB
+        inputs.durationEB = durationEB
+        inputs.okBtn = okBtn
+    end
+
+    -- new
+    if not cleuAuraButtons[0] then
+        cleuAuraButtons[0] = Cell.CreateButton(parent, "", "transparent-accent", {20, 20})
+        cleuAuraButtons[0]:SetTexture("Interface\\AddOns\\Cell\\Media\\Icons\\new", {16, 16}, {"RIGHT", -1, 0})
+        cleuAuraButtons[0]:SetPoint("BOTTOMLEFT")
+        cleuAuraButtons[0]:SetPoint("RIGHT")
+    end
+
+    cleuAuraButtons[0]:SetScript("OnClick", function(self)
+        parent.inputs:SetPoint("TOPLEFT", self)
+        parent.inputs:SetPoint("BOTTOMRIGHT", self)
+        parent.inputs:Show()
+        parent.inputs.spellEB:SetText("")
+        parent.inputs.durationEB:SetText("")
+        parent.inputs.okBtn:SetEnabled(false)
+        parent.inputs.okBtn:SetScript("OnClick", function()
+            local spellId = tonumber(parent.inputs.spellEB:GetText())
+            local duration = tonumber(parent.inputs.durationEB:GetText())
+            -- update db
+            tinsert(auraTable, {spellId, duration})
+            parent.func(auraTable)
+            CreateCleuAuraButtons(parent, auraTable, updateHeightFunc)
+            updateHeightFunc(19)
+            parent.inputs:Hide()
+        end)
+    end)
+
+    for i, t in ipairs(auraTable) do
+        -- creation
+        if not cleuAuraButtons[i] then
+            cleuAuraButtons[i] = Cell.CreateButton(parent, "", "transparent-accent", {20, 20})
+
+            -- spellIcon
+            cleuAuraButtons[i].spellIconBg = cleuAuraButtons[i]:CreateTexture(nil, "BORDER")
+            cleuAuraButtons[i].spellIconBg:SetSize(16, 16)
+            cleuAuraButtons[i].spellIconBg:SetPoint("TOPLEFT", 2, -2)
+            cleuAuraButtons[i].spellIconBg:SetColorTexture(0, 0, 0, 1)
+            cleuAuraButtons[i].spellIconBg:Hide()
+
+            cleuAuraButtons[i].spellIcon = cleuAuraButtons[i]:CreateTexture(nil, "OVERLAY")
+            cleuAuraButtons[i].spellIcon:SetPoint("TOPLEFT", cleuAuraButtons[i].spellIconBg, 1, -1)
+            cleuAuraButtons[i].spellIcon:SetPoint("BOTTOMRIGHT", cleuAuraButtons[i].spellIconBg, -1, 1)
+            cleuAuraButtons[i].spellIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+            cleuAuraButtons[i].spellIcon:Hide()
+
+            -- spellId text
+            cleuAuraButtons[i].spellIdText = cleuAuraButtons[i]:CreateFontString(nil, "OVERLAY", font_name)
+            cleuAuraButtons[i].spellIdText:SetPoint("LEFT", cleuAuraButtons[i].spellIconBg, "RIGHT", 5, 0)
+            cleuAuraButtons[i].spellIdText:SetPoint("RIGHT", cleuAuraButtons[i], "LEFT", 80, 0)
+            cleuAuraButtons[i].spellIdText:SetWordWrap(false)
+            cleuAuraButtons[i].spellIdText:SetJustifyH("LEFT")
+
+            -- spellName text
+            cleuAuraButtons[i].spellNameText = cleuAuraButtons[i]:CreateFontString(nil, "OVERLAY", font_name)
+            cleuAuraButtons[i].spellNameText:SetPoint("LEFT", cleuAuraButtons[i].spellIdText, "RIGHT", 5, 0)
+            cleuAuraButtons[i].spellNameText:SetPoint("RIGHT", -70, 0)
+            cleuAuraButtons[i].spellNameText:SetWordWrap(false)
+            cleuAuraButtons[i].spellNameText:SetJustifyH("LEFT")
+
+            -- duration text
+            cleuAuraButtons[i].durationText = cleuAuraButtons[i]:CreateFontString(nil, "OVERLAY", font_name)
+            cleuAuraButtons[i].durationText:SetPoint("LEFT", cleuAuraButtons[i].spellNameText, "RIGHT", 5, 0)
+            cleuAuraButtons[i].durationText:SetPoint("RIGHT", -40, 0)
+            cleuAuraButtons[i].durationText:SetWordWrap(false)
+            cleuAuraButtons[i].durationText:SetJustifyH("LEFT")
+
+            -- del
+            cleuAuraButtons[i].del = Cell.CreateButton(cleuAuraButtons[i], "", "none", {18, 20}, true, true)
+            cleuAuraButtons[i].del:SetTexture("Interface\\AddOns\\Cell\\Media\\Icons\\delete", {16, 16}, {"CENTER", 0, 0})
+            cleuAuraButtons[i].del:SetPoint("RIGHT")
+            cleuAuraButtons[i].del.tex:SetVertexColor(0.6, 0.6, 0.6, 1)
+            cleuAuraButtons[i].del:SetScript("OnEnter", function()
+                cleuAuraButtons[i]:GetScript("OnEnter")(cleuAuraButtons[i])
+                cleuAuraButtons[i].del.tex:SetVertexColor(1, 1, 1, 1)
+            end)
+            cleuAuraButtons[i].del:SetScript("OnLeave",  function()
+                cleuAuraButtons[i]:GetScript("OnLeave")(cleuAuraButtons[i])
+                cleuAuraButtons[i].del.tex:SetVertexColor(0.6, 0.6, 0.6, 1)
+            end)
+
+            -- edit
+            cleuAuraButtons[i].edit = Cell.CreateButton(cleuAuraButtons[i], "", "none", {18, 20}, true, true)
+            cleuAuraButtons[i].edit:SetPoint("RIGHT", cleuAuraButtons[i].del, "LEFT", 1, 0)
+            cleuAuraButtons[i].edit:SetTexture("Interface\\AddOns\\Cell\\Media\\Icons\\info", {16, 16}, {"CENTER", 0, 0})
+            cleuAuraButtons[i].edit.tex:SetVertexColor(0.6, 0.6, 0.6, 1)
+            cleuAuraButtons[i].edit:SetScript("OnEnter", function()
+                cleuAuraButtons[i]:GetScript("OnEnter")(cleuAuraButtons[i])
+                cleuAuraButtons[i].edit.tex:SetVertexColor(1, 1, 1, 1)
+            end)
+            cleuAuraButtons[i].edit:SetScript("OnLeave",  function()
+                cleuAuraButtons[i]:GetScript("OnLeave")(cleuAuraButtons[i])
+                cleuAuraButtons[i].edit.tex:SetVertexColor(0.6, 0.6, 0.6, 1)
+            end)
+
+            -- spell tooltip
+            cleuAuraButtons[i]:HookScript("OnEnter", function(self)
+                if parent.inputs:IsShown() then return end
+
+                local name = F.GetSpellInfo(self.spellId)
+                if not name then
+                    CellSpellTooltip:Hide()
+                    return
+                end
+
+                CellSpellTooltip:SetOwner(cleuAuraButtons[i], "ANCHOR_NONE")
+                CellSpellTooltip:SetPoint("TOPRIGHT", cleuAuraButtons[i], "TOPLEFT", -1, 0)
+                CellSpellTooltip:SetSpellByID(self.spellId)
+                CellSpellTooltip:Show()
+            end)
+            cleuAuraButtons[i]:HookScript("OnLeave", function()
+                if parent.inputs:IsShown() then return end
+                CellSpellTooltip:Hide()
+            end)
+        end
+
+        local name, icon = F.GetSpellInfo(t[1])
+        cleuAuraButtons[i].spellIdText:SetText(t[1])
+        cleuAuraButtons[i].spellNameText:SetText(name or L["Invalid"])
+        cleuAuraButtons[i].durationText:SetText(t[2])
+        if icon then
+            cleuAuraButtons[i].spellIcon:SetTexture(icon)
+            cleuAuraButtons[i].spellIconBg:Show()
+            cleuAuraButtons[i].spellIcon:Show()
+        else
+            cleuAuraButtons[i].spellIconBg:Hide()
+            cleuAuraButtons[i].spellIcon:Hide()
+        end
+        cleuAuraButtons[i].spellId = t[1]
+        cleuAuraButtons[i].duration = t[2]
+
+        -- points
+        cleuAuraButtons[i]:ClearAllPoints()
+        if i == 1 then -- first
+            cleuAuraButtons[i]:SetPoint("TOPLEFT")
+        else
+            cleuAuraButtons[i]:SetPoint("TOPLEFT", cleuAuraButtons[i-1], "BOTTOMLEFT", 0, 1)
+        end
+        cleuAuraButtons[i]:SetPoint("RIGHT")
+        cleuAuraButtons[i]:Show()
+
+        -- functions
+        cleuAuraButtons[i].edit:SetScript("OnClick", function()
+            parent.inputs:SetPoint("TOPLEFT", cleuAuraButtons[i])
+            parent.inputs:SetPoint("BOTTOMRIGHT", cleuAuraButtons[i])
+            parent.inputs:Show()
+            parent.inputs.spellEB:SetText(cleuAuraButtons[i].spellId)
+            parent.inputs.durationEB:SetText(cleuAuraButtons[i].duration)
+            parent.inputs.okBtn:SetEnabled(false)
+            parent.inputs.okBtn:SetScript("OnClick", function()
+                local spellId = tonumber(parent.inputs.spellEB:GetText())
+                local duration = tonumber(parent.inputs.durationEB:GetText())
+                local spellName, spellIcon = F.GetSpellInfo(spellId)
+                -- update text
+                cleuAuraButtons[i].spellIdText:SetText(spellId)
+                cleuAuraButtons[i].spellNameText:SetText(spellName)
+                cleuAuraButtons[i].durationText:SetText(duration)
+                cleuAuraButtons[i].spellId = spellId
+                cleuAuraButtons[i].duration = duration
+                -- update db
+                auraTable[i] = {spellId, duration}
+                parent.func(auraTable)
+                if spellIcon then
+                    cleuAuraButtons[i].spellIcon:SetTexture(spellIcon)
+                    cleuAuraButtons[i].spellIconBg:Show()
+                    cleuAuraButtons[i].spellIcon:Show()
+                else
+                    cleuAuraButtons[i].spellIconBg:Hide()
+                    cleuAuraButtons[i].spellIcon:Hide()
+                end
+                parent.inputs:Hide()
+            end)
+        end)
+
+        cleuAuraButtons[i].del:SetScript("OnClick", function()
+            tremove(auraTable, i)
+            parent.func(auraTable)
+            CreateCleuAuraButtons(parent, auraTable, updateHeightFunc)
+            updateHeightFunc(-19)
+        end)
+    end
+
+    for i = n+1, #cleuAuraButtons do
+        cleuAuraButtons[i]:Hide()
+        cleuAuraButtons[i]:ClearAllPoints()
+    end
+end
+
+local function CreateSetting_CleuAuras(parent)
+    local widget
+
+    if not settingWidgets["cleuAuras"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_CleuAuras", parent, 240, 128)
+        settingWidgets["cleuAuras"] = widget
+
+        widget.frame = Cell.CreateFrame(nil, widget, 20, 20)
+        widget.frame:SetPoint("TOPLEFT", 5, -20)
+        widget.frame:SetPoint("RIGHT", -5, 0)
+        widget.frame:Show()
+        Cell.StylizeFrame(widget.frame, {0.15, 0.15, 0.15, 1})
+
+        widget.text = widget:CreateFontString(nil, "OVERLAY", font_name)
+        widget.text:SetPoint("BOTTOMLEFT", widget.frame, "TOPLEFT", 0, 1)
+
+        -- callback
+        function widget:SetFunc(func)
+            widget.frame.func = func
+        end
+
+        -- show db value
+        function widget:SetDBValue(t)
+            widget.text:SetText(L["cleuAurasTips"])
+            CreateCleuAuraButtons(widget.frame, t, function(diff)
+                widget.frame:SetHeight((#t+1)*19+1)
+                widget:SetHeight((#t+1)*19+1 + 20 + 5)
+                if diff then parent:SetHeight(parent:GetHeight()+diff) end
+            end)
+            widget.frame:SetHeight((#t+1)*19+1)
+            widget:SetHeight((#t+1)*19+1 + 20 + 5)
+        end
+    else
+        widget = settingWidgets["cleuAuras"]
+    end
+
+    widget:Show()
+    return widget
+end
+]=]
+
+-------------------------------------------------
+-- CreateSetting_BuiltIns
+-------------------------------------------------
+local classOrder = {"DEATHKNIGHT", "DEMONHUNTER", "DRUID", "EVOKER", "HUNTER", "MAGE", "MONK", "PALADIN", "PRIEST", "ROGUE", "SHAMAN", "WARLOCK", "WARRIOR", "UNCATEGORIZED"}
+local classFrames = {}
+local spellButtons = {}
+local buttonIndex = 1
+local builtInUpdater
+
+local function UpdateSpellButton(btn, class, isDisabled)
+    if isDisabled then
+        btn:SetBackdropColor(0.6, 0.6, 0.6, 0.85)
+        btn.icon:SetDesaturated(true)
+        btn:SetAlpha(0.5)
+    else
+        if class == "UNCATEGORIZED" then
+            btn:SetBackdropColor(0.75, 0.75, 0.75, 0.85)
+        else
+            local r, g, b = F.GetClassColor(class)
+            btn:SetBackdropColor(r, g, b, 0.85)
+        end
+        btn.icon:SetDesaturated(false)
+        btn:SetAlpha(1)
+    end
+end
+
+local function CreateSpellButtons(parent, class, spells, disableds)
+    local n = 1
+    for spellId in pairs(spells) do
+        if not spellButtons[buttonIndex] then
+            spellButtons[buttonIndex] = CreateFrame("Button", "CellIndicatorSettings_BuiltIns_SpellButton"..buttonIndex, parent:GetParent(), "BackdropTemplate")
+            spellButtons[buttonIndex]:SetBackdrop({bgFile = Cell.vars.whiteTexture})
+            P.Size(spellButtons[buttonIndex], 20, 20)
+
+            spellButtons[buttonIndex].icon = spellButtons[buttonIndex]:CreateTexture(nil, "ARTWORK")
+            spellButtons[buttonIndex].icon:SetTexCoord(0.12, 0.88, 0.12, 0.88)
+            P.Point(spellButtons[buttonIndex].icon, "TOPLEFT", 2, -2)
+            P.Point(spellButtons[buttonIndex].icon, "BOTTOMRIGHT", -2, 2)
+        end
+
+        spellButtons[buttonIndex]:SetParent(parent)
+        spellButtons[buttonIndex]:Show()
+
+        -- tooltips
+        spellButtons[buttonIndex]:SetScript("OnEnter", function(self)
+            CellSpellTooltip:SetOwner(self, "ANCHOR_NONE")
+            CellSpellTooltip:SetPoint("BOTTOMLEFT", self, "TOPLEFT", 0, P.Scale(3))
+            CellSpellTooltip:SetSpellByID(spellId)
+            CellSpellTooltip:Show()
+        end)
+        spellButtons[buttonIndex]:SetScript("OnLeave", function()
+            CellSpellTooltip:Hide()
+        end)
+
+        -- click
+        spellButtons[buttonIndex]:SetScript("OnClick", function(self)
+            if disableds[spellId] then
+                disableds[spellId] = nil
+            else
+                disableds[spellId] = true
+            end
+            UpdateSpellButton(self, class, disableds[spellId])
+            builtInUpdater()
+        end)
+
+        if spellId == 45438 then
+            -- 深寒凝冰 覆盖了 寒冰屏障
+            spellButtons[buttonIndex].icon:SetTexture(135841)
+        else
+            local icon = select(2, F.GetSpellInfo(spellId))
+            spellButtons[buttonIndex].icon:SetTexture(icon)
+        end
+
+        UpdateSpellButton(spellButtons[buttonIndex], class, disableds[spellId])
+
+        spellButtons[buttonIndex]:ClearAllPoints()
+        if n == 1 then
+            spellButtons[buttonIndex]:SetPoint("TOPLEFT", 5, -20)
+        elseif (n - 1) % 10 == 0 then
+            spellButtons[buttonIndex]:SetPoint("TOPLEFT", spellButtons[buttonIndex-10], "BOTTOMLEFT", 0, -5)
+        else
+            spellButtons[buttonIndex]:SetPoint("TOPLEFT", spellButtons[buttonIndex-1], "TOPRIGHT", 5, 0)
+        end
+
+        n = n + 1
+        buttonIndex = buttonIndex + 1
+    end
+
+    local row = ceil((n - 1) / 10)
+    return row * 20 + (row - 1) * 5
+end
+
+local function CreateClassFrames(parent, builtIns, disableds)
+    local height = 0
+    local last
+
+    for _, class in pairs(classOrder) do
+        if not classFrames[class] then
+            classFrames[class] = Cell.CreateFrame("CellIndicatorSettings_BuiltIns_"..class, parent, nil, nil, true)
+            classFrames[class].text = classFrames[class]:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET")
+            classFrames[class].text:SetPoint("TOPLEFT", 5, -5)
+        end
+
+        local f = classFrames[class]
+
+        if builtIns[class] then
+            -- set position
+            f:Show()
+            f:ClearAllPoints()
+            if last then
+                f:SetPoint("TOPLEFT", last, "BOTTOMLEFT")
+            else
+                f:SetPoint("TOPLEFT")
+            end
+            f:SetPoint("RIGHT")
+            last = f
+
+            -- update text
+            if class == "UNCATEGORIZED" then
+                f.text:SetText("|cffbababa"..L["Uncategorized"])
+            else
+                f.text:SetText(F.GetClassColorStr(class)..F.GetLocalizedClassName(class))
+            end
+
+            -- create buttons
+            local buttonHeight = CreateSpellButtons(f, class, builtIns[class], disableds)
+
+            -- update height
+            f:SetHeight(buttonHeight + 20 + 5)
+            height = height + buttonHeight + 20 + 5
+        else
+            f:Hide()
+        end
+    end
+
+    -- hide unused spell buttons
+    for i = buttonIndex, #spellButtons do
+        spellButtons[i]:Hide()
+    end
+
+    return height
+end
+
+local function CreateSetting_BuiltIns(parent)
+    local widget
+
+    if not settingWidgets["builtIns"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_BuiltIns", parent, 240, 128)
+        settingWidgets["builtIns"] = widget
+
+        widget.frame = Cell.CreateFrame(nil, widget, 20, 20)
+        widget.frame:SetPoint("TOPLEFT", 5, -20)
+        widget.frame:SetPoint("RIGHT", -5, 0)
+        widget.frame:Show()
+        Cell.StylizeFrame(widget.frame, {0.15, 0.15, 0.15, 1})
+
+        widget.text = widget:CreateFontString(nil, "OVERLAY", font_name)
+        widget.text:SetPoint("BOTTOMLEFT", widget.frame, "TOPLEFT", 0, 1)
+        widget.text:SetText(L["Built-in Spells"])
+
+
+        -- callback
+        function widget:SetFunc(func)
+            builtInUpdater = func
+        end
+
+        -- show db value
+        function widget:SetDBValue(builtIns, disableds)
+            buttonIndex = 1
+            local height = CreateClassFrames(widget.frame, builtIns, disableds)
+            widget.frame:SetHeight(height)
+            widget:SetHeight(height + 25)
+        end
+    else
+        widget = settingWidgets["builtIns"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+local function CreateActionPreview(parent, style)
+    local f = CreateFrame("Frame", "CellIndicatorSettings_ActionsPreview_Type"..style, parent, "BackdropTemplate")
+    f:SetBackdrop({bgFile = Cell.vars.whiteTexture, edgeFile = Cell.vars.whiteTexture, edgeSize = P.Scale(1)})
+    f:SetBackdropColor(0.2, 0.2, 0.2, 1)
+    f:SetBackdropBorderColor(0, 0, 0, 1)
+
+    local text = f:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET")
+    text:SetPoint("CENTER")
+    text:SetText("Type "..style)
+
+    I.CreateActions(f, true)
+
+    function f:UpdateTicker(speed)
+        f:SetScript("OnShow", function()
+            f.actions:Display(style, {1, 1, 1})
+            f.ticker = C_Timer.NewTicker(2/speed, function()
+                f.actions:Display(style, {1, 1, 1})
+            end)
+        end)
+
+        f:SetScript("OnHide", function()
+            if f.ticker then
+                f.ticker:Cancel()
+                f.ticker = nil
+            end
+        end)
+    end
+
+    return f
+end
+
+local function CreateSetting_ActionsPreview(parent)
+    local widget
+
+    if not settingWidgets["actionsPreview"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_ActionsPreview", parent, 240, 220)
+        settingWidgets["actionsPreview"] = widget
+
+        local typeA = CreateActionPreview(widget, "A")
+        typeA:SetSize(70, 50)
+        typeA:SetPoint("TOPLEFT", 5, -5)
+
+        local typeB = CreateActionPreview(widget, "B")
+        typeB:SetSize(70, 50)
+        typeB:SetPoint("TOPLEFT", typeA, "TOPRIGHT", 5, 0)
+
+        local typeD = CreateActionPreview(widget, "D")
+        typeD:SetSize(70, 50)
+        typeD:SetPoint("TOPLEFT", typeB, "TOPRIGHT", 5, 0)
+
+        local typeC1 = CreateActionPreview(widget, "C1")
+        typeC1:SetSize(70, 50)
+        typeC1:SetPoint("TOPLEFT", typeA, "BOTTOMLEFT", 0, -5)
+
+        local typeC2 = CreateActionPreview(widget, "C2")
+        typeC2:SetSize(70, 50)
+        typeC2:SetPoint("TOPLEFT", typeC1, "TOPRIGHT", 5, 0)
+
+        local typeC3 = CreateActionPreview(widget, "C3")
+        typeC3:SetSize(70, 50)
+        typeC3:SetPoint("TOPLEFT", typeC2, "TOPRIGHT", 5, 0)
+
+        local typeE = CreateActionPreview(widget, "E")
+        typeE:SetSize(70, 50)
+        typeE:SetPoint("TOPLEFT", typeC1, "BOTTOMLEFT", 0, -5)
+
+        local typeF = CreateActionPreview(widget, "F")
+        typeF:SetSize(70, 50)
+        typeF:SetPoint("TOPLEFT", typeE, "TOPRIGHT", 5, 0)
+
+        local typeG = CreateActionPreview(widget, "G")
+        typeG:SetSize(70, 50)
+        typeG:SetPoint("TOPLEFT", typeF, "TOPRIGHT", 5, 0)
+
+        local previews = {
+            A = typeA,
+            B = typeB,
+            C1 = typeC1,
+            C2 = typeC2,
+            C3 = typeC3,
+            D = typeD,
+            E = typeE,
+            F = typeF,
+            G = typeG,
+        }
+
+        local speedSlider = Cell.CreateSlider(_G.SPEED, widget, 0.5, 1.5, 145, 0.01)
+        speedSlider:SetPoint("TOPLEFT", typeE, "BOTTOMLEFT", 0, -25)
+        speedSlider.afterValueChangedFn = function(value)
+            widget.func(value)
+
+            for _, f in pairs(previews) do
+                f:UpdateTicker(value)
+                f.actions:SetSpeed(value)
+                f:Hide()
+                f:Show()
+            end
+        end
+
+        function widget:SetDBValue(speed)
+            speedSlider:SetValue(speed)
+
+            for _, f in pairs(previews) do
+                f:UpdateTicker(speed)
+                f.actions:SetSpeed(speed)
+                f:Hide()
+                f:Show()
+            end
+        end
+
+        function widget:SetFunc(func)
+            widget.func = func
+        end
+    else
+        widget = settingWidgets["actionsPreview"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+local ACTION_SPELL_ITEM = {
+    [1234768] = 241304,
+    [1236616] = 241309,
+    [431416] = 211880,
+    [431932] = 212265,
+}
+
+local function GetActionItemIcon(itemId)
+    if not itemId then return end
+    if C_Item and C_Item.GetItemIconByID then
+        return C_Item.GetItemIconByID(itemId)
+    end
+    if GetItemIcon then
+        return GetItemIcon(itemId)
+    end
+end
+
+local actionButtons = {}
+local function CreateActionButtons(parent, spellTable, updateHeightFunc)
+    local n = #spellTable
+
+    -- tooltip
+    if not parent.popupEditBox then
+        local popup = Cell.CreatePopupEditBox(parent)
+        popup:SetNumeric(true)
+
+        popup:SetScript("OnTextChanged", function()
+            local spellId = tonumber(popup:GetText())
+            if not spellId then
+                CellSpellTooltip:Hide()
+                return
+            end
+
+            local name = F.GetSpellInfo(spellId)
+            if not name then
+                CellSpellTooltip:Hide()
+                return
+            end
+
+            CellSpellTooltip:SetOwner(popup, "ANCHOR_NONE")
+            CellSpellTooltip:SetPoint("TOPLEFT", popup, "BOTTOMLEFT", 0, -1)
+            CellSpellTooltip:SetSpellByID(spellId)
+            CellSpellTooltip:Show()
+        end)
+
+        popup:HookScript("OnHide", function()
+            CellSpellTooltip:Hide()
+        end)
+    end
+
+    -- new
+    if not actionButtons[0] then
+        actionButtons[0] = Cell.CreateButton(parent, "", "transparent-accent", {20, 20})
+        actionButtons[0]:SetTexture("Interface\\AddOns\\Cell\\Media\\Icons\\new", {16, 16}, {"RIGHT", -1, 0})
+        actionButtons[0]:SetPoint("BOTTOMLEFT")
+        actionButtons[0]:SetPoint("RIGHT")
+    end
+
+    actionButtons[0]:SetScript("OnClick", function(self)
+        local popup = Cell.CreatePopupEditBox(parent, function(text)
+            local spellId = tonumber(text)
+            local spellName = F.GetSpellInfo(spellId)
+            if spellId and spellName then
+                -- update db
+                tinsert(spellTable, {
+                    spellId,
+                    {"A", {1, 1, 1}}
+                })
+                parent.func(spellTable)
+                CreateActionButtons(parent, spellTable, updateHeightFunc)
+                updateHeightFunc(19)
+            else
+                F.Print(L["Invalid spell id."])
+            end
+        end)
+        popup:SetPoint("TOPLEFT", self)
+        popup:SetPoint("BOTTOMRIGHT", self)
+        popup:ShowEditBox("")
+        parent.popupEditBox:SetTips("|cffababab"..L["Input spell id"])
+    end)
+
+
+    for i, spell in ipairs(spellTable) do
+        -- creation
+        if not actionButtons[i] then
+            actionButtons[i] = Cell.CreateButton(parent, "", "transparent-accent", {20, 20})
+
+            -- spellIcon
+            actionButtons[i].spellIconBg = actionButtons[i]:CreateTexture(nil, "BORDER")
+            actionButtons[i].spellIconBg:SetSize(16, 16)
+            actionButtons[i].spellIconBg:SetPoint("TOPLEFT", 2, -2)
+            actionButtons[i].spellIconBg:SetColorTexture(0, 0, 0, 1)
+            actionButtons[i].spellIconBg:Hide()
+
+            actionButtons[i].spellIcon = actionButtons[i]:CreateTexture(nil, "OVERLAY")
+            actionButtons[i].spellIcon:SetPoint("TOPLEFT", actionButtons[i].spellIconBg, 1, -1)
+            actionButtons[i].spellIcon:SetPoint("BOTTOMRIGHT", actionButtons[i].spellIconBg, -1, 1)
+            actionButtons[i].spellIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+            actionButtons[i].spellIcon:Hide()
+
+            -- spellId text
+            actionButtons[i].spellIdText = actionButtons[i]:CreateFontString(nil, "OVERLAY", font_name)
+            actionButtons[i].spellIdText:SetPoint("LEFT", actionButtons[i].spellIconBg, "RIGHT", 5, 0)
+            actionButtons[i].spellIdText:SetPoint("RIGHT", actionButtons[i], "LEFT", 80, 0)
+            actionButtons[i].spellIdText:SetWordWrap(false)
+            actionButtons[i].spellIdText:SetJustifyH("LEFT")
+
+            -- spellName text
+            actionButtons[i].spellNameText = actionButtons[i]:CreateFontString(nil, "OVERLAY", font_name)
+            actionButtons[i].spellNameText:SetPoint("LEFT", actionButtons[i].spellIdText, "RIGHT", 5, 0)
+            actionButtons[i].spellNameText:SetPoint("RIGHT", -90, 0)
+            actionButtons[i].spellNameText:SetWordWrap(false)
+            actionButtons[i].spellNameText:SetJustifyH("LEFT")
+
+            -- style dropdown
+            actionButtons[i].styleDropdown = Cell.CreateDropdown(actionButtons[i], 30, nil, true)
+            P.Height(actionButtons[i].styleDropdown, 16)
+            actionButtons[i].styleDropdown:SetPoint("TOPLEFT", actionButtons[i], 180, -2)
+            actionButtons[i].styleDropdown.button:HookScript("OnEnter", function()
+                actionButtons[i]:GetScript("OnEnter")(actionButtons[i])
+            end)
+            actionButtons[i].styleDropdown.button:HookScript("OnLeave", function()
+                actionButtons[i]:GetScript("OnLeave")(actionButtons[i])
+            end)
+
+            local items = {}
+            for _, style in pairs({"A", "B", "C1", "C2", "C3", "D", "E", "F", "G"}) do
+                tinsert(items, {
+                    ["text"] = style,
+                    ["onClick"] = function()
+                        F.BD(CellIndicatorsPreviewButton).indicators.actions:Display(style, actionButtons[i].animationColor)
+                        actionButtons[i].animationType = style
+                        -- update db
+                        spellTable[i][2][1] = style
+                        parent.func(spellTable)
+                    end,
+                })
+            end
+            actionButtons[i].styleDropdown:SetItems(items)
+
+            -- color
+            actionButtons[i].colorPicker = Cell.CreateColorPicker(actionButtons[i], "", false, nil, function(r, g, b, a)
+                spellTable[i][2][2][1] = r
+                spellTable[i][2][2][2] = g
+                spellTable[i][2][2][3] = b
+                parent.func(spellTable)
+                actionButtons[i].animationColor = {r, g, b}
+                F.BD(CellIndicatorsPreviewButton).indicators.actions:Display(actionButtons[i].animationType, actionButtons[i].animationColor)
+            end)
+            actionButtons[i].colorPicker:SetPoint("TOPLEFT", actionButtons[i].styleDropdown, "TOPRIGHT", 2, -1)
+            actionButtons[i].colorPicker:HookScript("OnEnter", function()
+                actionButtons[i]:GetScript("OnEnter")(actionButtons[i])
+            end)
+            actionButtons[i].colorPicker:HookScript("OnLeave", function()
+                actionButtons[i]:GetScript("OnLeave")(actionButtons[i])
+            end)
+
+            -- del
+            actionButtons[i].del = Cell.CreateButton(actionButtons[i], "", "none", {18, 20}, true, true)
+            actionButtons[i].del:SetTexture("Interface\\AddOns\\Cell\\Media\\Icons\\delete", {16, 16}, {"CENTER", 0, 0})
+            actionButtons[i].del:SetPoint("RIGHT")
+            actionButtons[i].del.tex:SetVertexColor(0.6, 0.6, 0.6, 1)
+            actionButtons[i].del:SetScript("OnEnter", function()
+                actionButtons[i]:GetScript("OnEnter")(actionButtons[i])
+                actionButtons[i].del.tex:SetVertexColor(1, 1, 1, 1)
+            end)
+            actionButtons[i].del:SetScript("OnLeave",  function()
+                actionButtons[i]:GetScript("OnLeave")(actionButtons[i])
+                actionButtons[i].del.tex:SetVertexColor(0.6, 0.6, 0.6, 1)
+            end)
+
+            -- edit
+            actionButtons[i].edit = Cell.CreateButton(actionButtons[i], "", "none", {18, 20}, true, true)
+            actionButtons[i].edit:SetPoint("RIGHT", actionButtons[i].del, "LEFT", 1, 0)
+            actionButtons[i].edit:SetTexture("Interface\\AddOns\\Cell\\Media\\Icons\\info", {16, 16}, {"CENTER", 0, 0})
+            actionButtons[i].edit.tex:SetVertexColor(0.6, 0.6, 0.6, 1)
+            actionButtons[i].edit:SetScript("OnEnter", function()
+                actionButtons[i]:GetScript("OnEnter")(actionButtons[i])
+                actionButtons[i].edit.tex:SetVertexColor(1, 1, 1, 1)
+            end)
+            actionButtons[i].edit:SetScript("OnLeave",  function()
+                actionButtons[i]:GetScript("OnLeave")(actionButtons[i])
+                actionButtons[i].edit.tex:SetVertexColor(0.6, 0.6, 0.6, 1)
+            end)
+
+            -- preview
+            actionButtons[i]:SetScript("OnClick", function(self, button)
+                F.BD(CellIndicatorsPreviewButton).indicators.actions:Display(actionButtons[i].animationType, actionButtons[i].animationColor)
+            end)
+
+            -- spell tooltip
+            actionButtons[i]:HookScript("OnEnter", function(self)
+                if not parent.popupEditBox:IsShown() then
+                    local spellId = self.spellId
+                    local itemId = spellId and ACTION_SPELL_ITEM[spellId]
+
+                    CellSpellTooltip:SetOwner(actionButtons[i], "ANCHOR_NONE")
+                    CellSpellTooltip:SetPoint("TOPRIGHT", actionButtons[i], "TOPLEFT", -1, 0)
+                    if itemId then
+                        CellSpellTooltip:SetItemByID(itemId)
+                        CellSpellTooltip:Show()
+                        return
+                    end
+
+                    local name = F.GetSpellInfo(spellId)
+                    if not name then
+                        CellSpellTooltip:Hide()
+                        return
+                    end
+
+                    CellSpellTooltip:SetSpellByID(spellId)
+                    CellSpellTooltip:Show()
+                end
+            end)
+            actionButtons[i]:HookScript("OnLeave", function()
+                if not parent.popupEditBox:IsShown() then
+                    CellSpellTooltip:Hide()
+                end
+            end)
+        end
+
+        -- fill data
+        local name, icon = F.GetSpellInfo(spell[1])
+        local itemIcon = GetActionItemIcon(ACTION_SPELL_ITEM[spell[1]])
+        if itemIcon then icon = itemIcon end
+        actionButtons[i].spellIdText:SetText(spell[1])
+        actionButtons[i].spellId = spell[1]
+        actionButtons[i].spellNameText:SetText(name or L["Invalid"])
+        if icon then
+            actionButtons[i].spellIcon:SetTexture(icon)
+            actionButtons[i].spellIconBg:Show()
+            actionButtons[i].spellIcon:Show()
+        else
+            actionButtons[i].spellIconBg:Hide()
+            actionButtons[i].spellIcon:Hide()
+        end
+
+        actionButtons[i].animationType = spell[2][1]
+        actionButtons[i].styleDropdown:SetSelected(spell[2][1])
+        actionButtons[i].animationColor = spell[2][2]
+        actionButtons[i].colorPicker:SetColor(spell[2][2])
+
+        -- points
+        actionButtons[i]:ClearAllPoints()
+        if i == 1 then -- first
+            actionButtons[i]:SetPoint("TOPLEFT")
+        else
+            actionButtons[i]:SetPoint("TOPLEFT", actionButtons[i-1], "BOTTOMLEFT", 0, 1)
+        end
+        actionButtons[i]:SetPoint("RIGHT")
+        actionButtons[i]:Show()
+
+        -- functions
+        actionButtons[i].edit:SetScript("OnClick", function()
+            local popup = Cell.CreatePopupEditBox(parent, function(text)
+                local spellId = tonumber(text)
+                local spellName, spellIcon = F.GetSpellInfo(spellId)
+                if spellId and spellName then
+                    spellIcon = GetActionItemIcon(ACTION_SPELL_ITEM[spellId]) or spellIcon
+                    -- update text
+                    actionButtons[i].spellIdText:SetText(spellId)
+                    actionButtons[i].spellId = spellId
+                    actionButtons[i].spellNameText:SetText(spellName)
+                    -- update db
+                    spellTable[i][1] = spellId
+                    parent.func(spellTable)
+                    if spellIcon then
+                        actionButtons[i].spellIcon:SetTexture(spellIcon)
+                        actionButtons[i].spellIconBg:Show()
+                        actionButtons[i].spellIcon:Show()
+                    else
+                        actionButtons[i].spellIconBg:Hide()
+                        actionButtons[i].spellIcon:Hide()
+                    end
+                else
+                    F.Print(L["Invalid spell id."])
+                end
+            end)
+            popup:SetPoint("TOPLEFT", actionButtons[i])
+            popup:SetPoint("BOTTOMRIGHT", actionButtons[i])
+            popup:ShowEditBox(actionButtons[i].spellId or "")
+            parent.popupEditBox:SetTips("|cffababab"..L["Input spell id"])
+        end)
+
+        actionButtons[i].del:SetScript("OnClick", function()
+            tremove(spellTable, i)
+            parent.func(spellTable)
+            CreateActionButtons(parent, spellTable, updateHeightFunc)
+            updateHeightFunc(-19)
+        end)
+    end
+
+    for i = n+1, #actionButtons do
+        actionButtons[i]:Hide()
+        actionButtons[i]:ClearAllPoints()
+    end
+end
+
+local function CreateSetting_ActionsList(parent)
+    local widget
+
+    if not settingWidgets["actionsList"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_ActionsList", parent, 240, 128)
+        settingWidgets["actionsList"] = widget
+
+        widget.text = widget:CreateFontString(nil, "OVERLAY", font_name)
+        widget.text:SetPoint("TOPLEFT", 7, -7)
+        widget.text:SetText(L["Click to preview"])
+
+        widget.debug = Cell.CreateButton(widget, L["Debug Mode"], "accent", {100, 17})
+        widget.debug:SetPoint("TOPRIGHT", -5, -5)
+        widget.debug.enabled = false
+        widget.debug:SetScript("OnClick", function(self)
+            if self.enabled then
+                self.enabled = false
+                LCG.PixelGlow_Stop(widget.debug)
+            else
+                self.enabled = true
+                LCG.PixelGlow_Start(widget.debug, {0,1,0,1}, 9, 0.25, 8, 1)
+            end
+            Cell.vars.actionsDebugModeEnabled = self.enabled
+        end)
+
+        widget.frame = Cell.CreateFrame(nil, widget, 20, 20)
+        widget.frame:SetPoint("TOPLEFT", 5, -27)
+        widget.frame:SetPoint("RIGHT", -5, 0)
+        widget.frame:Show()
+        Cell.StylizeFrame(widget.frame, {0.15, 0.15, 0.15, 1})
+
+        -- callback
+        function widget:SetFunc(func)
+            widget.frame.func = func
+        end
+
+        -- show db value
+        function widget:SetDBValue(t)
+            CreateActionButtons(widget.frame, t, function(diff)
+                widget.frame:SetHeight((#t+1)*19+1)
+                widget:SetHeight((#t+1)*19+1 + 27 + 5)
+                if diff then parent:SetHeight(parent:GetHeight()+diff) end
+            end)
+            widget.frame:SetHeight((#t+1)*19+1)
+            widget:SetHeight((#t+1)*19+1 + 27 + 5)
+        end
+    else
+        widget = settingWidgets["actionsList"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+local thresholdButtons = {}
+local function CreateThresholdButtons(parent, thresholdTable, updateHeightFunc)
+    local n = #thresholdTable
+
+    -- new
+    if not thresholdButtons[0] then
+        thresholdButtons[0] = Cell.CreateButton(parent, "", "transparent-accent", {20, 20})
+        thresholdButtons[0]:SetTexture("Interface\\AddOns\\Cell\\Media\\Icons\\new", {16, 16}, {"RIGHT", -1, 0})
+        thresholdButtons[0]:SetPoint("BOTTOMLEFT")
+        thresholdButtons[0]:SetPoint("RIGHT")
+    end
+
+    thresholdButtons[0]:SetScript("OnClick", function(self)
+        tinsert(thresholdTable, {0.99, {1, 0, 0, 1}})
+        parent.func(thresholdTable)
+        CreateThresholdButtons(parent, thresholdTable, updateHeightFunc)
+        updateHeightFunc(19)
+    end)
+
+
+    for i, t in ipairs(thresholdTable) do
+        -- creation
+        if not thresholdButtons[i] then
+            thresholdButtons[i] = Cell.CreateButton(parent, "", "transparent-accent", {20, 20})
+
+            -- threshold
+            thresholdButtons[i].eb = Cell.CreateEditBox(thresholdButtons[i], 35, 16, false, false, true)
+            thresholdButtons[i].eb:SetPoint("TOPLEFT", 2, -2)
+            thresholdButtons[i].eb:SetMaxLetters(2)
+            thresholdButtons[i].eb:HookScript("OnEnter", function()
+                thresholdButtons[i]:GetScript("OnEnter")(thresholdButtons[i])
+            end)
+            thresholdButtons[i].eb:HookScript("OnLeave", function()
+                thresholdButtons[i]:GetScript("OnLeave")(thresholdButtons[i])
+            end)
+
+            thresholdButtons[i].confirmBtn = Cell.CreateButton(thresholdButtons[i], "OK", "accent", {27, 16})
+            thresholdButtons[i].confirmBtn:SetPoint("TOPLEFT", thresholdButtons[i].eb, "TOPRIGHT", P.Scale(-1), 0)
+            thresholdButtons[i].confirmBtn:Hide()
+            thresholdButtons[i].confirmBtn:SetScript("OnHide", function()
+                thresholdButtons[i].confirmBtn:Hide()
+            end)
+            thresholdButtons[i].confirmBtn:HookScript("OnEnter", function()
+                thresholdButtons[i]:GetScript("OnEnter")(thresholdButtons[i])
+            end)
+            thresholdButtons[i].confirmBtn:HookScript("OnLeave", function()
+                thresholdButtons[i]:GetScript("OnLeave")(thresholdButtons[i])
+            end)
+            thresholdButtons[i].confirmBtn:SetScript("OnClick", function()
+                local newThreshold = tonumber(thresholdButtons[i].eb:GetText())
+                thresholdTable[i][1] = newThreshold / 100
+                parent.func(thresholdTable)
+                thresholdButtons[i].eb:ClearFocus()
+                thresholdButtons[i].confirmBtn:Hide()
+                CreateThresholdButtons(parent, thresholdTable, updateHeightFunc)
+            end)
+
+            thresholdButtons[i].eb:SetScript("OnTextChanged", function(self, userChanged)
+                if userChanged then
+                    local newThreshold = tonumber(self:GetText())
+                    if newThreshold and newThreshold ~= thresholdTable[i][1] * 100 then
+                        thresholdButtons[i].confirmBtn:Show()
+                    else
+                        thresholdButtons[i].confirmBtn:Hide()
+                    end
+                end
+            end)
+
+            -- percentSign
+            thresholdButtons[i].percentSign = thresholdButtons[i]:CreateFontString(nil, "OVERLAY", font_name)
+            thresholdButtons[i].percentSign:SetPoint("LEFT", thresholdButtons[i].eb, "RIGHT", 2, 0)
+            thresholdButtons[i].percentSign:SetText("%")
+
+            -- color
+            thresholdButtons[i].colorPicker = Cell.CreateColorPicker(thresholdButtons[i], "", true, nil, function(r, g, b, a)
+                thresholdTable[i][2][1] = r
+                thresholdTable[i][2][2] = g
+                thresholdTable[i][2][3] = b
+                thresholdTable[i][2][4] = a
+                parent.func(thresholdTable)
+            end)
+            thresholdButtons[i].colorPicker:SetPoint("TOPLEFT", thresholdButtons[i].eb, "TOPRIGHT", P.Scale(30), P.Scale(-1))
+            thresholdButtons[i].colorPicker:HookScript("OnEnter", function()
+                thresholdButtons[i]:GetScript("OnEnter")(thresholdButtons[i])
+            end)
+            thresholdButtons[i].colorPicker:HookScript("OnLeave", function()
+                thresholdButtons[i]:GetScript("OnLeave")(thresholdButtons[i])
+            end)
+
+            -- del
+            thresholdButtons[i].del = Cell.CreateButton(thresholdButtons[i], "", "none", {18, 20}, true, true)
+            thresholdButtons[i].del:SetTexture("Interface\\AddOns\\Cell\\Media\\Icons\\delete", {16, 16}, {"CENTER", 0, 0})
+            thresholdButtons[i].del:SetPoint("RIGHT")
+            thresholdButtons[i].del.tex:SetVertexColor(0.6, 0.6, 0.6, 1)
+            thresholdButtons[i].del:SetScript("OnEnter", function()
+                thresholdButtons[i]:GetScript("OnEnter")(thresholdButtons[i])
+                thresholdButtons[i].del.tex:SetVertexColor(1, 1, 1, 1)
+            end)
+            thresholdButtons[i].del:SetScript("OnLeave",  function()
+                thresholdButtons[i]:GetScript("OnLeave")(thresholdButtons[i])
+                thresholdButtons[i].del.tex:SetVertexColor(0.6, 0.6, 0.6, 1)
+            end)
+        end
+
+        -- fill data
+        thresholdButtons[i].eb:SetText(t[1]*100)
+        thresholdButtons[i].colorPicker:SetColor(t[2])
+
+        -- points
+        thresholdButtons[i]:ClearAllPoints()
+        if i == 1 then -- first
+            thresholdButtons[i]:SetPoint("TOPLEFT")
+        else
+            thresholdButtons[i]:SetPoint("TOPLEFT", thresholdButtons[i-1], "BOTTOMLEFT", 0, P.Scale(1))
+        end
+        thresholdButtons[i]:SetPoint("RIGHT")
+        thresholdButtons[i]:Show()
+
+        -- functions
+        thresholdButtons[i].del:SetScript("OnClick", function()
+            tremove(thresholdTable, i)
+            parent.func(thresholdTable)
+            CreateThresholdButtons(parent, thresholdTable, updateHeightFunc)
+            updateHeightFunc(-19)
+        end)
+    end
+
+    for i = n+1, #thresholdButtons do
+        thresholdButtons[i]:Hide()
+        thresholdButtons[i]:ClearAllPoints()
+    end
+end
+
+local function CreateSetting_Thresholds(parent)
+    local widget
+
+    if not settingWidgets["thresholds"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_Thresholds", parent, 240, 128)
+        settingWidgets["thresholds"] = widget
+
+        widget.text = widget:CreateFontString(nil, "OVERLAY", font_name)
+        widget.text:SetPoint("TOPLEFT", 7, -7)
+        widget.text:SetText(L["Only one threshold is displayed at a time"])
+
+        widget.frame = Cell.CreateFrame(nil, widget, 100, 20)
+        widget.frame:SetPoint("TOPLEFT", 5, -27)
+        -- widget.frame:SetPoint("RIGHT", -5, 0)
+        widget.frame:Show()
+        Cell.StylizeFrame(widget.frame, {0.15, 0.15, 0.15, 1})
+
+        -- callback
+        function widget:SetFunc(func)
+            widget.frame.func = func
+        end
+
+        -- show db value
+        function widget:SetDBValue(t)
+            CreateThresholdButtons(widget.frame, t, function(diff)
+                widget.frame:SetHeight((#t+1)*19+1)
+                widget:SetHeight((#t+1)*19+1 + 27 + 5)
+                if diff then parent:SetHeight(parent:GetHeight()+diff) end
+            end)
+            widget.frame:SetHeight((#t+1)*19+1)
+            widget:SetHeight((#t+1)*19+1 + 27 + 5)
+        end
+    else
+        widget = settingWidgets["thresholds"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+local function CreateSetting_HighlightType(parent)
+    local widget
+
+    if not settingWidgets["highlightType"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_HighlightType", parent, 240, 50)
+        settingWidgets["highlightType"] = widget
+
+        -- Only "fill" (tied to the health bar's current fill, like the border-color
+        -- overlay elsewhere) and "full" (the whole health bar frame, ignoring current
+        -- health) carry an opacity slider -- the edge fade textures already have their
+        -- own baked-in fade, an opacity slider on top of those wouldn't do much.
+        local function UpdateOpacityVisibility(highlightType)
+            if highlightType == "fill" or highlightType == "full" then
+                widget.opacity:Show()
+                widget:SetHeight(95)
+            else
+                widget.opacity:Hide()
+                widget:SetHeight(50)
+            end
+            Cell.UpdateIndicatorSettingsHeight()
+        end
+
+        widget.highlightType = Cell.CreateDropdown(widget, 245)
+        widget.highlightType:SetPoint("TOPLEFT", 5, -20)
+        widget.highlightType:SetItems({
+            {
+                ["text"] = L["None"],
+                ["value"] = "none",
+                ["onClick"] = function()
+                    UpdateOpacityVisibility("none")
+                    widget.func({"none"})
+                end,
+            },
+            {
+                ["text"] = L["Solid"].." - "..L["Scales with Health"],
+                ["value"] = "fill",
+                ["onClick"] = function()
+                    UpdateOpacityVisibility("fill")
+                    widget.func({"fill", widget.opacity:GetValue()})
+                end,
+            },
+            {
+                ["text"] = L["Solid"].." - "..L["Entire Health Bar"],
+                ["value"] = "full",
+                ["onClick"] = function()
+                    UpdateOpacityVisibility("full")
+                    widget.func({"full", widget.opacity:GetValue()})
+                end,
+            },
+            {
+                ["text"] = L["Edge Fade"].." ("..L["TOP"]..")",
+                ["value"] = "edge-top",
+                ["onClick"] = function()
+                    UpdateOpacityVisibility("edge-top")
+                    widget.func({"edge-top"})
+                end,
+            },
+            {
+                ["text"] = L["Edge Fade"].." ("..L["BOTTOM"]..")",
+                ["value"] = "edge-bottom",
+                ["onClick"] = function()
+                    UpdateOpacityVisibility("edge-bottom")
+                    widget.func({"edge-bottom"})
+                end,
+            },
+        })
+
+        widget.highlightTypeText = widget:CreateFontString(nil, "OVERLAY", font_name)
+        widget.highlightTypeText:SetText(L["Highlight Type"])
+        widget.highlightTypeText:SetPoint("BOTTOMLEFT", widget.highlightType, "TOPLEFT", 0, 1)
+
+        widget.opacity = Cell.CreateSlider(L["Opacity"], widget, 0, 100, 235, 1, nil, nil, true)
+        widget.opacity:SetPoint("TOPLEFT", widget.highlightType, "BOTTOMLEFT", 0, -25)
+        -- Starts at the slider's own min (0) until SetDBValue below sets a real saved value.
+        -- Switching the dropdown straight to "fill"/"full" on a profile that has never had
+        -- this slider shown before (e.g. a fresh profile, default highlightType is a bare
+        -- "edge-bottom" string with no opacity) reads this un-set 0 via GetValue() below and
+        -- saves it as the opacity -- and 0 is truthy in Lua, so Dispels_UpdateHighlight's
+        -- "opacity or 50" fallback never kicks in, making the highlight fully transparent.
+        -- Seed a sane default so that can't happen.
+        widget.opacity:SetValue(50)
+        -- afterValueChangedFn (commits once, on release), not onValueChangedFn (fires on
+        -- every tick while dragging) -- this setting routes through a full raid-wide
+        -- native-engine container rebuild (RebuildAllCombatAuraDisplays), same reason
+        -- every other slider in this settings panel (position, size, frame level, ...)
+        -- commits on release instead of live-updating every pixel of drag.
+        widget.opacity.afterValueChangedFn = function(value)
+            widget.func({widget.highlightType:GetSelected(), value})
+        end
+
+        --[[
+        -- curse
+        widget.curseCP = Cell.CreateColorPicker(widget, "|TInterface\\AddOns\\Cell\\Media\\Debuffs\\Curse:0|t "..L["Curse"], false, nil, function(r, g, b)
+            I.SetDebuffTypeColor("Curse", r, g, b)
+            widget.func(widget.highlightType:GetSelected())
+        end)
+        widget.curseCP:SetPoint("TOPLEFT", widget.highlightType, "BOTTOMLEFT", 0, -7)
+
+        -- disease
+        widget.diseaseCP = Cell.CreateColorPicker(widget, "|TInterface\\AddOns\\Cell\\Media\\Debuffs\\Disease:0|t "..L["Disease"], false, nil, function(r, g, b)
+            I.SetDebuffTypeColor("Disease", r, g, b)
+            widget.func(widget.highlightType:GetSelected())
+        end)
+        widget.diseaseCP:SetPoint("TOPLEFT", widget.curseCP, "TOPRIGHT", 110, 0)
+
+        -- magic
+        widget.magicCP = Cell.CreateColorPicker(widget, "|TInterface\\AddOns\\Cell\\Media\\Debuffs\\Magic:0|t "..L["Magic"], false, nil, function(r, g, b)
+            I.SetDebuffTypeColor("Magic", r, g, b)
+            widget.func(widget.highlightType:GetSelected())
+        end)
+        widget.magicCP:SetPoint("TOPLEFT", widget.curseCP, "BOTTOMLEFT", 0, -7)
+
+        -- poison
+        widget.poisonCP = Cell.CreateColorPicker(widget, "|TInterface\\AddOns\\Cell\\Media\\Debuffs\\Poison:0|t "..L["Poison"], false, nil, function(r, g, b)
+            I.SetDebuffTypeColor("Poison", r, g, b)
+            widget.func(widget.highlightType:GetSelected())
+        end)
+        widget.poisonCP:SetPoint("TOPLEFT", widget.magicCP, "TOPRIGHT", 110, 0)
+
+        -- reset
+        widget.resetBtn = Cell.CreateButton(widget, L["Reset All"], "accent-hover", {70, 20})
+        widget.resetBtn:SetPoint("TOPLEFT", widget.magicCP, "BOTTOMLEFT", 0, -7)
+        widget.resetBtn:SetScript("OnClick", function()
+            I.ResetDebuffTypeColor()
+            widget.curseCP:SetColor(I.GetDebuffTypeColor("Curse"))
+            widget.diseaseCP:SetColor(I.GetDebuffTypeColor("Disease"))
+            widget.magicCP:SetColor(I.GetDebuffTypeColor("Magic"))
+            widget.poisonCP:SetColor(I.GetDebuffTypeColor("Poison"))
+            widget.func(widget.highlightType:GetSelected())
+        end)
+        ]]
+
+        -- callback
+        function widget:SetFunc(func)
+            widget.func = func
+        end
+
+        -- show db value
+        -- value is {highlightType, opacity} -- opacity only meaningful for fill/full.
+        -- Also accepts a bare legacy string (old profiles, pre-opacity-slider):
+        -- "entire"/"entire-solid" become fill/full at their old fixed opacity,
+        -- "gradient-sharp" folds into "edge-bottom" like it always has.
+        function widget:SetDBValue(value)
+            local highlightType, opacity
+            if type(value) == "table" then
+                highlightType, opacity = value[1], value[2]
+            else
+                highlightType = value
+            end
+            if highlightType == "gradient-sharp" then
+                highlightType = "edge-bottom"
+            elseif highlightType == "entire" then
+                highlightType, opacity = "fill", opacity or 50
+            elseif highlightType == "entire-solid" then
+                highlightType, opacity = "full", opacity or 100
+            elseif highlightType ~= "edge-top" and highlightType ~= "edge-bottom" and highlightType ~= "none" and highlightType ~= "fill" and highlightType ~= "full" then
+                highlightType, opacity = "fill", opacity or 50
+            end
+            widget.highlightType:SetSelectedValue(highlightType)
+            if highlightType == "fill" or highlightType == "full" then
+                widget.opacity:SetValue(opacity or 50)
+                widget.opacity:Show()
+                widget:SetHeight(95)
+            else
+                widget.opacity:Hide()
+                widget:SetHeight(50)
+            end
+        end
+    else
+        widget = settingWidgets["highlightType"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+local function CreateSetting_PrivateAuraOptions(parent)
+    local widget
+
+    if not settingWidgets["privateAuraOptions"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_PrivateAuraOptions", parent, 240, 430)
+        settingWidgets["privateAuraOptions"] = widget
+        widget.options = {true, false, 1, false, 1, false, true, 1, 6, 0, "0"}
+
+        widget.cb1 = Cell.CreateCheckButton(widget, L["Show countdown swipe"])
+        widget.cb1:SetPoint("TOPLEFT", 5, -8)
+        widget.cb2 = Cell.CreateCheckButton(widget, L["Show countdown number"])
+        widget.cb2:SetPoint("TOPLEFT", widget.cb1, "BOTTOMLEFT", 0, -7)
+        widget.cb3 = Cell.CreateCheckButton(widget, L["Hide aura tooltip"])
+        widget.cb3:SetPoint("TOPLEFT", widget.cb2, "BOTTOMLEFT", 0, -7)
+        widget.maxAuras = Cell.CreateSlider(L["Max Displayed"], widget, 1, 5, 110, 1)
+        widget.maxAuras:SetPoint("TOPLEFT", widget.cb3, "BOTTOMLEFT", 0, -18)
+        widget.borderScale = Cell.CreateSlider(L["Border Scale"], widget, 0.5, 2, 110, 0.05)
+        widget.borderScale:SetPoint("LEFT", widget.maxAuras, "RIGHT", 25, 0)
+
+        widget.line = widget:CreateTexture(nil, "ARTWORK")
+        widget.line:SetPoint("TOPLEFT", widget.maxAuras, "BOTTOMLEFT", 0, -10)
+        widget.line:SetPoint("TOPRIGHT", widget.borderScale, "BOTTOMRIGHT", 0, -10)
+        widget.line:SetHeight(1)
+        widget.line:SetColorTexture(1, 1, 1, 0.2)
+
+        widget.dispelBlock = Cell.CreateFrame("CellIndicatorSettings_PrivateAuraDispelBlock", widget, 230, 285)
+        widget.dispelBlock:SetPoint("TOPLEFT", widget.line, "BOTTOMLEFT", 0, -14)
+        widget.dispelBlock:Show()
+
+        widget.dispelTitle = widget.dispelBlock:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET")
+        widget.dispelTitle:SetPoint("TOPLEFT", 8, -8)
+        widget.dispelTitle:SetText(L["Private Dispel Overlay"])
+        widget.dispelTitle:SetTextColor(0.4, 0.85, 1)
+
+        widget.cb4 = Cell.CreateCheckButton(widget.dispelBlock, L["Show private dispel overlay"])
+        widget.cb4:SetPoint("TOPLEFT", widget.dispelTitle, "BOTTOMLEFT", 0, -8)
+        widget.cb5 = Cell.CreateCheckButton(widget.dispelBlock, L["Only dispellable by me"])
+        widget.cb5:SetPoint("TOPLEFT", widget.cb4, "BOTTOMLEFT", 0, -7)
+        widget.alpha = Cell.CreateSlider(L["Overlay Alpha"], widget.dispelBlock, 0, 1, 110, 0.05)
+        widget.alpha:SetPoint("TOPLEFT", widget.cb5, "BOTTOMLEFT", 0, -20)
+        widget.level = Cell.CreateSlider(L["Overlay Frame Level"], widget.dispelBlock, 0, 25, 110, 1)
+        widget.level:SetPoint("TOPLEFT", widget.alpha, "BOTTOMLEFT", 0, -48)
+        widget.inset = Cell.CreateSlider(L["Overlay Inset"], widget.dispelBlock, -20, 20, 110, 1)
+        widget.inset:SetPoint("TOPLEFT", widget.level, "BOTTOMLEFT", 0, -48)
+        widget.gradientLabel = widget.dispelBlock:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET")
+        widget.gradientLabel:SetPoint("TOPLEFT", widget.inset, "BOTTOMLEFT", 0, -20)
+        widget.gradientLabel:SetText(L["Gradient"])
+        widget.gradient = Cell.CreateDropdown(widget.dispelBlock, 110)
+        widget.gradient:SetPoint("TOPLEFT", widget.gradientLabel, "BOTTOMLEFT", 0, -6)
+        widget.gradient:SetItems({
+            {
+                ["text"] = L["Top"],
+                ["value"] = "0",
+                ["onClick"] = function()
+                    widget.options[11] = "0"
+                    if widget.func then widget.func(widget.options) end
+                end,
+            },
+            {
+                ["text"] = L["BOTTOM"],
+                ["value"] = "1",
+                ["onClick"] = function()
+                    widget.options[11] = "1"
+                    if widget.func then widget.func(widget.options) end
+                end,
+            },
+            {
+                ["text"] = L["Left"],
+                ["value"] = "2",
+                ["onClick"] = function()
+                    widget.options[11] = "2"
+                    if widget.func then widget.func(widget.options) end
+                end,
+            },
+        })
+
+        -- callback
+        function widget:SetFunc(func)
+            widget.func = func
+            widget.cb1.onClick = function(checked)
+                widget.cb2:SetEnabled(checked)
+                widget.options[1] = checked
+                widget.options[2] = widget.cb2:GetChecked()
+                widget.options[4] = widget.cb3:GetChecked()
+                func(widget.options)
+            end
+            widget.cb2.onClick = function(checked)
+                widget.options[1] = widget.cb1:GetChecked()
+                widget.options[2] = checked
+                widget.options[4] = widget.cb3:GetChecked()
+                func(widget.options)
+            end
+            widget.cb3.onClick = function(checked)
+                widget.options[1] = widget.cb1:GetChecked()
+                widget.options[2] = widget.cb2:GetChecked()
+                widget.options[4] = checked
+                func(widget.options)
+            end
+            widget.maxAuras.afterValueChangedFn = function(value)
+                widget.options[3] = value
+                func(widget.options)
+            end
+            widget.borderScale.afterValueChangedFn = function(value)
+                widget.options[5] = value
+                func(widget.options)
+            end
+            widget.cb4.onClick = function(checked)
+                widget.options[6] = checked
+                widget.cb5:SetEnabled(checked)
+                widget.alpha:SetEnabled(checked)
+                widget.level:SetEnabled(checked)
+                widget.inset:SetEnabled(checked)
+                widget.gradient:SetEnabled(checked)
+                func(widget.options)
+            end
+            widget.cb5.onClick = function(checked)
+                widget.options[7] = checked
+                func(widget.options)
+            end
+            widget.alpha.afterValueChangedFn = function(value)
+                widget.options[8] = value
+                func(widget.options)
+            end
+            widget.level.afterValueChangedFn = function(value)
+                widget.options[9] = value
+                func(widget.options)
+            end
+            widget.inset.afterValueChangedFn = function(value)
+                widget.options[10] = value
+                func(widget.options)
+            end
+        end
+
+        -- show db value
+        function widget:SetDBValue(t)
+            widget.options = {t[1], t[2], t[3] or 1, t[4] or false, t[5] or 1, t[6] or false, t[7] ~= false, t[8] or 1, t[9] or 6, t[10] or 0, tostring(t[11] or "0")}
+            widget.cb1:SetChecked(t[1])
+            widget.cb2:SetChecked(t[2])
+            widget.cb2:SetEnabled(t[1])
+            widget.cb3:SetChecked(t[4] or false)
+            widget.maxAuras:SetValue(t[3] or 1)
+            widget.borderScale:SetValue(t[5] or 1)
+            widget.cb4:SetChecked(t[6] or false)
+            widget.cb5:SetChecked(t[7] ~= false)
+            widget.alpha:SetValue(t[8] or 1)
+            widget.level:SetValue(t[9] or 6)
+            widget.inset:SetValue(t[10] or 0)
+            widget.gradient:SetSelectedValue(tostring(t[11] or "0"))
+
+            local enabled = t[6] or false
+            widget.cb5:SetEnabled(enabled)
+            widget.alpha:SetEnabled(enabled)
+            widget.level:SetEnabled(enabled)
+            widget.inset:SetEnabled(enabled)
+            widget.gradient:SetEnabled(enabled)
+        end
+    else
+        widget = settingWidgets["privateAuraOptions"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+local function CreateSetting_Warning(parent)
+    local widget
+
+    if not settingWidgets["warning"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_Warning", parent, 240, 64)
+        settingWidgets["warning"] = widget
+
+        widget.bg = widget:CreateTexture(nil, "BACKGROUND")
+        widget.bg:SetAllPoints()
+        widget.bg:SetColorTexture(0.28, 0.18, 0.04, 0.35)
+
+        widget.text = widget:CreateFontString(nil, "OVERLAY", font_name)
+        widget.text:SetPoint("TOPLEFT", 8, -6)
+        widget.text:SetPoint("BOTTOMRIGHT", -8, 6)
+        widget.text:SetJustifyH("LEFT")
+        widget.text:SetJustifyV("MIDDLE")
+        widget.text:SetWordWrap(true)
+        widget.text:SetTextColor(1, 0.78, 0.35)
+
+        function widget:SetDBValue(text)
+            widget.text:SetText(text)
+            C_Timer.After(0, function()
+                if not widget:IsShown() then return end
+                widget:SetHeight(math.max(64, math.ceil(widget.text:GetStringHeight()) + 16))
+                Cell.UpdateIndicatorSettingsHeight()
+            end)
+        end
+        function widget:SetFunc()
+        end
+    else
+        widget = settingWidgets["warning"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+local function CreateSetting_Tips(parent, text)
+    local widget
+
+    if not settingWidgets["tips"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_Tips", parent, 240, 30)
+        settingWidgets["tips"] = widget
+
+        -- widget.text = widget:CreateFontString(nil, "OVERLAY", font_name)
+        -- widget.text:SetPoint("LEFT", 5, 0)
+        -- widget.text:SetPoint("RIGHT", -5, 0)
+        -- widget.text:SetJustifyH("LEFT")
+        widget.text = Cell.CreateScrollTextFrame(widget, "", 0.02, nil, nil, true)
+        widget.text:SetPoint("LEFT", 5, 0)
+        widget.text:SetPoint("RIGHT", -5, 0)
+
+        function widget:SetDBValue()
+        end
+        function widget:SetFunc()
+        end
+    else
+        widget = settingWidgets["tips"]
+    end
+
+    widget.text:SetText(text)
+    widget:Show()
+    return widget
+end
+
+local function CreateSetting_Shape(parent)
+    local widget
+
+    if not settingWidgets["shape"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_Shape", parent, 240, 50)
+        settingWidgets["shape"] = widget
+
+        local shapes = {"circle", "square", "rhombus", "hexagon", "octagon"}
+
+        widget.buttons = {}
+
+        for i, s in pairs(shapes) do
+            widget.buttons[s] = Cell.CreateButton(widget, nil, "accent-hover", {22, 22})
+            widget.buttons[s]:SetTexture("Interface\\AddOns\\Cell\\Media\\Shapes\\"..shapes[i].."_filled", {18, 18}, {"CENTER", 0, 0})
+
+            -- button group
+            widget.buttons[s].id = s
+
+            if i == 1 then
+                widget.buttons[s]:SetPoint("TOPLEFT", 5, -20)
+            else
+                widget.buttons[s]:SetPoint("TOPLEFT", widget.buttons[shapes[i-1]], "TOPRIGHT", 5, 0)
+            end
+        end
+
+        widget.highlight = Cell.CreateButtonGroup(widget.buttons, function(shape)
+            widget.func(shape)
+        end)
+
+        -- widget.shape = Cell.CreateDropdown(widget, 153)
+        -- widget.shape:SetPoint("TOPLEFT", 5, -20)
+        -- widget.shape:SetItems({
+        --     {
+        --         ["text"] = "|TInterface\\AddOns\\Cell\\Media\\Shapes\\circle_filled:0|t",
+        --         ["value"] = "circle",
+        --         ["onClick"] = function()
+        --             widget.func("circle")
+        --         end,
+        --     },
+        --     {
+        --         ["text"] = "|TInterface\\AddOns\\Cell\\Media\\Shapes\\square_filled:0|t",
+        --         ["value"] = "square",
+        --         ["onClick"] = function()
+        --             widget.func("square")
+        --         end,
+        --     },
+        --     {
+        --         ["text"] = "|TInterface\\AddOns\\Cell\\Media\\Shapes\\rhombus_filled:0|t",
+        --         ["value"] = "rhombus",
+        --         ["onClick"] = function()
+        --             widget.func("rhombus")
+        --         end,
+        --     },
+        --     {
+        --         ["text"] = "|TInterface\\AddOns\\Cell\\Media\\Shapes\\hexagon_filled:0|t",
+        --         ["value"] = "hexagon",
+        --         ["onClick"] = function()
+        --             widget.func("hexagon")
+        --         end,
+        --     },
+        --     {
+        --         ["text"] = "|TInterface\\AddOns\\Cell\\Media\\Shapes\\octagon_filled:0|t",
+        --         ["value"] = "octagon",
+        --         ["onClick"] = function()
+        --             widget.func("octagon")
+        --         end,
+        --     },
+        --     {
+        --         ["text"] = "|TInterface\\AddOns\\Cell\\Media\\Shapes\\star_filled:0|t",
+        --         ["value"] = "star",
+        --         ["onClick"] = function()
+        --             widget.func("star")
+        --         end,
+        --     },
+        -- })
+
+        widget.shapeText = widget:CreateFontString(nil, "OVERLAY", font_name)
+        widget.shapeText:SetText(L["Shape"])
+        widget.shapeText:SetPoint("BOTTOMLEFT", widget.buttons[shapes[1]], "TOPLEFT", 0, 2)
+
+        -- callback
+        function widget:SetFunc(func)
+            widget.func = func
+        end
+
+        -- show db value
+        function widget:SetDBValue(shape)
+            -- widget.shape:SetSelectedValue(shape)
+            widget.highlight(shape)
+        end
+    else
+        widget = settingWidgets["shape"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+local function CreateSetting_TargetCounterFilters(parent)
+    local widget
+
+    if not settingWidgets["targetCounterFilters"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_TargetCounterFilters", parent, 240, 74)
+        settingWidgets["targetCounterFilters"] = widget
+
+        widget.outdoor = Cell.CreateCheckButton(widget, L["Outdoor"])
+        widget.outdoor:SetPoint("TOPLEFT", 5, -8)
+
+        widget.pve = Cell.CreateCheckButton(widget, "PvE")
+        widget.pve:SetPoint("TOPLEFT", widget.outdoor, "BOTTOMLEFT", 0, -8)
+
+        widget.pvp = Cell.CreateCheckButton(widget, "PvP")
+        widget.pvp:SetPoint("TOPLEFT", widget.pve, "BOTTOMLEFT", 0, -8)
+
+        -- callback
+        function widget:SetFunc(func)
+            widget.outdoor.onClick = function(checked)
+                widget.filters.outdoor = checked
+                func()
+            end
+            widget.pve.onClick = function(checked)
+                widget.filters.pve = checked
+                func()
+            end
+            widget.pvp.onClick = function(checked)
+                widget.filters.pvp = checked
+                func()
+            end
+        end
+
+        -- show db value
+        function widget:SetDBValue(filters)
+            widget.filters = filters
+            widget.outdoor:SetChecked(filters["outdoor"])
+            widget.pve:SetChecked(filters["pve"])
+            widget.pvp:SetChecked(filters["pvp"])
+        end
+    else
+        widget = settingWidgets["targetCounterFilters"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+local function CreateSetting_DispelFilters(parent)
+    local widget
+
+    if not settingWidgets["dispelFilters"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_DispelFilters", parent, 240, 96)
+        settingWidgets["dispelFilters"] = widget
+
+        widget.dispellableByMe = Cell.CreateCheckButton(widget, L["dispellableByMe"])
+        widget.dispellableByMe:SetPoint("TOPLEFT", 5, -8)
+
+        widget.curse = Cell.CreateCheckButton(widget, "|TInterface\\AddOns\\Cell\\Media\\Debuffs\\Curse:0|t"..L["Curse"])
+        widget.curse:SetPoint("TOPLEFT", widget.dispellableByMe, "BOTTOMLEFT", 0, -8)
+
+        widget.disease = Cell.CreateCheckButton(widget, "|TInterface\\AddOns\\Cell\\Media\\Debuffs\\Disease:0|t"..L["Disease"])
+        widget.disease:SetPoint("TOPLEFT", widget.curse, 135, 0)
+
+        widget.magic = Cell.CreateCheckButton(widget, "|TInterface\\AddOns\\Cell\\Media\\Debuffs\\Magic:0|t"..L["Magic"])
+        widget.magic:SetPoint("TOPLEFT", widget.curse, "BOTTOMLEFT", 0, -8)
+
+        widget.poison = Cell.CreateCheckButton(widget, "|TInterface\\AddOns\\Cell\\Media\\Debuffs\\Poison:0|t"..L["Poison"])
+        widget.poison:SetPoint("TOPLEFT", widget.magic, 135, 0)
+
+        widget.bleed = Cell.CreateCheckButton(widget, "|TInterface\\AddOns\\Cell\\Media\\Debuffs\\Bleed:0|t"..L["Bleed"])
+        widget.bleed:SetPoint("TOPLEFT", widget.magic, "BOTTOMLEFT", 0, -8)
+
+        -- callback
+        function widget:SetFunc(func)
+            widget.dispellableByMe.onClick = function(checked)
+                widget.filters.dispellableByMe = checked
+                func()
+            end
+            widget.curse.onClick = function(checked)
+                widget.filters.Curse = checked
+                func()
+            end
+            widget.disease.onClick = function(checked)
+                widget.filters.Disease = checked
+                func()
+            end
+            widget.magic.onClick = function(checked)
+                widget.filters.Magic = checked
+                func()
+            end
+            widget.poison.onClick = function(checked)
+                widget.filters.Poison = checked
+                func()
+            end
+            widget.bleed.onClick = function(checked)
+                widget.filters.Bleed = checked
+                func()
+            end
+        end
+
+        -- show db value
+        function widget:SetDBValue(filters)
+            widget.filters = filters
+            widget.dispellableByMe:SetChecked(filters.dispellableByMe)
+            widget.curse:SetChecked(filters.Curse)
+            widget.disease:SetChecked(filters.Disease)
+            widget.magic:SetChecked(filters.Magic)
+            widget.poison:SetChecked(filters.Poison)
+            widget.bleed:SetChecked(filters.Bleed)
+        end
+    else
+        widget = settingWidgets["dispelFilters"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+local HIGHLIGHT_DEBUFF_FILTER_KEYS = {
+    "nonplayer", "priority", "cc", "bossaura", "roleaura",
+    "raid", "raidcombat", "dispellable", "dispeltyped",
+}
+
+-- Keep this in sync with CombatAuraDisplay.lua's HIGHLIGHT_DEBUFF_TRISTATE_KEYS: these are
+-- the filter classes whose underlying candidate check is a single plain boolean, so besides
+-- "checked" (only matching) they can also be "negated" (only NOT matching) -- e.g. "Non-Player
+-- Auras" negated shows only YOUR OWN debuffs, which there was previously no way to do.
+local HIGHLIGHT_DEBUFF_TRISTATE_KEYS = { nonplayer = true, priority = true, bossaura = true, roleaura = true }
+
+function SetHighlightDebuffCheckboxState(cb, baseLabel, state)
+    cb:SetChecked(state ~= nil)
+    if state == false then
+        cb:SetText(baseLabel.." |cffff5555("..L["Negated"]..")|r")
+    else
+        cb:SetText(baseLabel)
+    end
+end
+
+local function CreateSetting_HighlightDebuffFilters(parent)
+    local widget
+
+    if not settingWidgets["highlightDebuffFilters"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_HighlightDebuffFilters", parent, 240, 168)
+        settingWidgets["highlightDebuffFilters"] = widget
+
+        widget.checks = {}
+        local prevLeft, prevRight
+        for i, key in ipairs(HIGHLIGHT_DEBUFF_FILTER_KEYS) do
+            local label = L["highlightDebuffFilters_"..key]
+            local tip = L["highlightDebuffFiltersTip_"..key]
+            if HIGHLIGHT_DEBUFF_TRISTATE_KEYS[key] then
+                tip = tip.."\n"..L["highlightDebuffFiltersTristateTip"]
+            end
+            local cb = Cell.CreateCheckButton(widget, label, nil, label, tip)
+            cb.baseLabel = label
+            widget.checks[key] = cb
+            local col = (i - 1) % 2 -- 0 = left, 1 = right
+            local row = math.ceil(i / 2)
+            if col == 0 then
+                if row == 1 then
+                    cb:SetPoint("TOPLEFT", 5, -8)
+                else
+                    cb:SetPoint("TOPLEFT", prevLeft, "BOTTOMLEFT", 0, -8)
+                end
+                prevLeft = cb
+            else
+                cb:SetPoint("TOPLEFT", prevLeft, 135, 0)
+                prevRight = cb
+            end
+        end
+
+        widget.tip = widget:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET_SMALL")
+        widget.tip:SetPoint("TOPLEFT", prevLeft, "BOTTOMLEFT", 0, -10)
+        widget.tip:SetWidth(230)
+        widget.tip:SetJustifyH("LEFT")
+        widget.tip:SetJustifyV("TOP")
+        widget.tip:SetWordWrap(true)
+        widget.tip:SetSpacing(1)
+        widget.tip:SetTextColor(0.6, 0.6, 0.6)
+        widget.tip:SetText(L["highlightDebuffFiltersTip"])
+
+        local rowsHeight = 8 + 5 * (14 + 8)
+        local tipHeight = math.ceil(widget.tip:GetStringHeight())
+        widget:SetHeight(rowsHeight + 10 + tipHeight + 10)
+
+        -- callback
+        function widget:SetFunc(func)
+            for _, key in ipairs(HIGHLIGHT_DEBUFF_FILTER_KEYS) do
+                local cb = widget.checks[key]
+                if HIGHLIGHT_DEBUFF_TRISTATE_KEYS[key] then
+                    -- 3-state cycle (off -> checked -> negated -> off), tracked ourselves --
+                    -- the native CheckButton toggle (self:GetChecked() after the click) only
+                    -- ever gives a plain true/false, so it's overridden every time below to
+                    -- reflect our own state instead of whatever it just auto-toggled to.
+                    cb:SetScript("OnClick", function(self)
+                        local current = widget.filterClasses[key]
+                        local nextState
+                        if current == true then
+                            nextState = false
+                        elseif current == false then
+                            nextState = nil
+                        else
+                            nextState = true
+                        end
+                        widget.filterClasses[key] = nextState
+                        SetHighlightDebuffCheckboxState(self, self.baseLabel, nextState)
+                        PlaySound(nextState ~= nil and SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON or SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_OFF)
+                        func()
+                    end)
+                else
+                    cb.onClick = function(checked)
+                        widget.filterClasses[key] = checked
+                        func()
+                    end
+                end
+            end
+        end
+
+        -- show db value
+        function widget:SetDBValue(filterClasses)
+            widget.filterClasses = filterClasses
+            for _, key in ipairs(HIGHLIGHT_DEBUFF_FILTER_KEYS) do
+                local cb = widget.checks[key]
+                if HIGHLIGHT_DEBUFF_TRISTATE_KEYS[key] then
+                    SetHighlightDebuffCheckboxState(cb, cb.baseLabel, filterClasses[key])
+                else
+                    cb:SetChecked(filterClasses[key])
+                end
+            end
+        end
+    else
+        widget = settingWidgets["highlightDebuffFilters"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+local function CreateSetting_CastBy(parent)
+    local widget
+
+    if not settingWidgets["castBy"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_CastBy", parent, 240, 50)
+        settingWidgets["castBy"] = widget
+
+        widget.castBy = Cell.CreateDropdown(widget, 245)
+        widget.castBy:SetPoint("TOPLEFT", 5, -20)
+        widget.castBy:SetItems({
+            {
+                ["text"] = L["Me"],
+                ["value"] = "me",
+                ["onClick"] = function()
+                    widget.func("me")
+                end,
+            },
+            {
+                ["text"] = L["Others"],
+                ["value"] = "others",
+                ["onClick"] = function()
+                    widget.func("others")
+                end,
+            },
+            {
+                ["text"] = L["Anyone"],
+                ["value"] = "anyone",
+                ["onClick"] = function()
+                    widget.func("anyone")
+                end,
+            },
+        })
+
+        widget.castByText = widget:CreateFontString(nil, "OVERLAY", font_name)
+        widget.castByText:SetText(L["Cast By"])
+        widget.castByText:SetPoint("BOTTOMLEFT", widget.castBy, "TOPLEFT", 0, 1)
+
+        -- callback
+        function widget:SetFunc(func)
+            widget.func = func
+        end
+
+        -- show db value
+        function widget:SetDBValue(castBy)
+            widget.castBy:SetSelectedValue(castBy)
+        end
+    else
+        widget = settingWidgets["castBy"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+-- local function CreateSetting_ShowOn(parent)
+--     local widget
+
+--     if not settingWidgets["showOn"] then
+--         widget = Cell.CreateFrame("CellIndicatorSettings_ShowOn", parent, 240, 50)
+--         settingWidgets["showOn"] = widget
+
+--         widget.showOn = Cell.CreateDropdown(widget, 245)
+--         widget.showOn:SetPoint("TOPLEFT", 5, -20)
+--         widget.showOn:SetItems({
+--             {
+--                 ["text"] = L["All"],
+--                 ["value"] = "all",
+--                 ["onClick"] = function()
+--                     widget.func("all")
+--                 end,
+--             },
+--             {
+--                 ["text"] = L["Main"],
+--                 ["value"] = "main",
+--                 ["onClick"] = function()
+--                     widget.func("main")
+--                 end,
+--             },
+--             {
+--                 ["text"] = L["Spotlight"],
+--                 ["value"] = "spotlight",
+--                 ["onClick"] = function()
+--                     widget.func("spotlight")
+--                 end,
+--             },
+--             {
+--                 ["text"] = L["Pet"],
+--                 ["value"] = "pet",
+--                 ["onClick"] = function()
+--                     widget.func("pet")
+--                 end,
+--             },
+--             {
+--                 ["text"] = L["NPC"],
+--                 ["value"] = "npc",
+--                 ["onClick"] = function()
+--                     widget.func("npc")
+--                 end,
+--             },
+--         })
+
+--         widget.showOnText = widget:CreateFontString(nil, "OVERLAY", font_name)
+--         widget.showOnText:SetText(L["Show On"])
+--         widget.showOnText:SetPoint("BOTTOMLEFT", widget.showOn, "TOPLEFT", 0, 1)
+
+--         -- callback
+--         function widget:SetFunc(func)
+--             widget.func = func
+--         end
+
+--         -- show db value
+--         function widget:SetDBValue(showOn)
+--             widget.showOn:SetSelectedValue(showOn)
+--         end
+--     else
+--         widget = settingWidgets["showOn"]
+--     end
+
+--     widget:Show()
+--     return widget
+-- end
+
+local function CreateSetting_MaxValue(parent)
+    local widget
+
+    if not settingWidgets["maxValue"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_MaxValue", parent, 240, 80)
+        settingWidgets["maxValue"] = widget
+
+        widget.cb = Cell.CreateCheckButton(widget, L["Set Bar Max Value"], function(checked)
+            Cell.SetEnabled(checked, widget.maxValue, widget.secText, widget.allowSmaller)
+            widget.func({checked, tonumber(widget.maxValue:GetText()) or 0, widget.allowSmaller:GetChecked()})
+        end)
+        widget.cb:SetPoint("TOPLEFT", 5, -8)
+
+        widget.maxValue = Cell.CreateEditBox(widget, 50, 20, nil, nil, true)
+        widget.maxValue:SetPoint("TOPLEFT", widget.cb, "BOTTOMLEFT", 0, -8)
+        widget.maxValue:SetMaxLetters(3)
+        widget.maxValue:AddConfirmButton(function()
+            local value = tonumber(widget.maxValue:GetText()) or 0
+            widget.maxValue:SetText(value)
+            widget.func({widget.cb:GetChecked(), value, widget.allowSmaller:GetChecked()})
+        end, "number")
+
+        widget.secText = widget:CreateFontString(nil, "OVERLAY", font_name)
+        widget.secText:SetPoint("LEFT", widget.maxValue, "RIGHT", 5, 0)
+        widget.secText:SetText(L["sec"])
+
+        widget.allowSmaller = Cell.CreateCheckButton(widget, L["Allow smaller value"], function(checked)
+            widget.func({widget.cb:GetChecked(), tonumber(widget.maxValue:GetText()) or 0, checked})
+        end)
+        widget.allowSmaller:SetPoint("TOPLEFT", widget.maxValue, "BOTTOMLEFT", 0, -8)
+
+        -- callback
+        function widget:SetFunc(func)
+            widget.func = func
+        end
+
+        -- show db value
+        function widget:SetDBValue(maxValue)
+            widget.cb:SetChecked(maxValue[1])
+            widget.maxValue:SetText(maxValue[2])
+            widget.allowSmaller:SetChecked(maxValue[3])
+            Cell.SetEnabled(maxValue[1], widget.maxValue, widget.secText, widget.allowSmaller)
+        end
+    else
+        widget = settingWidgets["maxValue"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+local function CreateSetting_AnimationStyle(parent)
+    local widget
+
+    if not settingWidgets["animationStyle"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_AnimationStyle", parent, 240, 50)
+        settingWidgets["animationStyle"] = widget
+
+        widget.dropdown = Cell.CreateDropdown(widget, 245)
+        widget.dropdown:SetPoint("TOPLEFT", 5, -20)
+        widget.dropdown:SetItems({
+            {
+                ["text"] = L["None"],
+                ["value"] = "none",
+                ["onClick"] = function()
+                    widget.func("none")
+                end,
+            },
+            {
+                ["text"] = L["top-to-bottom"],
+                ["value"] = "vertical",
+                ["onClick"] = function()
+                    widget.func("vertical")
+                end,
+            },
+            {
+                ["text"] = L["Circular"],
+                ["value"] = "clock",
+                ["onClick"] = function()
+                    widget.func("clock")
+                end,
+            },
+        })
+
+        widget.label = widget:CreateFontString(nil, "OVERLAY", font_name)
+        widget.label:SetText(L["Animation"])
+        widget.label:SetPoint("BOTTOMLEFT", widget.dropdown, "TOPLEFT", 0, 1)
+
+        function widget:SetFunc(func)
+            widget.func = func
+        end
+
+        function widget:SetDBValue(style)
+            if style ~= "none" and style ~= "vertical" and style ~= "clock" then
+                style = "clock"
+            end
+            widget.dropdown:SetSelectedValue(style)
+        end
+    else
+        widget = settingWidgets["animationStyle"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+local function CreateSetting_IconStyle(parent)
+    local widget
+
+    if not settingWidgets["iconStyle"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_IconStyle", parent, 240, 50)
+        settingWidgets["iconStyle"] = widget
+
+        widget.iconStyle = Cell.CreateDropdown(widget, 245)
+        widget.iconStyle:SetPoint("TOPLEFT", 5, -20)
+
+        -- dispels
+        do
+            local dispels = {
+                {
+                    ["text"] = L["None"],
+                    ["value"] = "none",
+                    ["onClick"] = function()
+                        widget.func("none")
+                    end,
+                },
+                {
+                    -- ["text"] = "blizzard",
+                    ["value"] = "blizzard",
+                    ["onClick"] = function()
+                        widget.func("blizzard")
+                    end,
+                },
+                {
+                    -- ["text"] = "rhombus",
+                    ["value"] = "rhombus",
+                    ["onClick"] = function()
+                        widget.func("rhombus")
+                    end,
+                },
+            }
+            widget.dispels = dispels
+
+            local types = {"Magic", "Curse", "Disease", "Poison", "Bleed"}
+
+            -- blizzard
+            local blizzard = ""
+            local blizzard_icon = "|TInterface\\AddOns\\Cell\\Media\\Debuffs\\%s:0|t"
+
+            -- rhombus
+            local rhombus = ""
+            local rhombus_icon = "|TInterface\\AddOns\\Cell\\Media\\Debuffs\\Rhombus:0:0:0:0:16:16:0:16:0:16:%s:%s:%s|t"
+
+            for _, t in pairs(types) do
+                blizzard = blizzard .. blizzard_icon:format(t) .. " "
+
+                local r, g, b = F.ConvertRGB_256(I.GetDebuffTypeColor(t))
+                rhombus = rhombus .. rhombus_icon:format(r, g, b) .. " "
+            end
+
+            dispels[2].text = blizzard
+            dispels[3].text = rhombus
+        end
+
+        widget.iconStyleText = widget:CreateFontString(nil, "OVERLAY", font_name)
+        widget.iconStyleText:SetText(L["Icon Style"])
+        widget.iconStyleText:SetPoint("BOTTOMLEFT", widget.iconStyle, "TOPLEFT", 0, 1)
+
+        -- callback
+        function widget:SetFunc(func)
+            widget.func = func
+        end
+
+        -- show db value
+        function widget:SetDBValue(iconStyle, indicatorName)
+            widget.iconStyle:SetItems(widget[indicatorName])
+            widget.iconStyle:SetSelectedValue(iconStyle)
+        end
+    else
+        widget = settingWidgets["iconStyle"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+local function CreateSetting_TargetedSpellsDisplayMode(parent)
+    local widget
+
+    if not settingWidgets["targetedSpellsDisplayMode"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_TargetedSpellsDisplayMode", parent, 240, 50)
+        settingWidgets["targetedSpellsDisplayMode"] = widget
+
+        widget.dropdown = Cell.CreateDropdown(widget, 245)
+        widget.dropdown:SetPoint("TOPLEFT", 5, -20)
+        local ddItems = {
+            {
+                ["text"] = L["None"],
+                ["value"] = "None",
+                ["onClick"] = function()
+                    widget.func("None")
+                end,
+            },
+            {
+                ["text"] = L["Icons only"],
+                ["value"] = "Icons",
+                ["onClick"] = function()
+                    widget.func("Icons")
+                end,
+            },
+        }
+        --! Classic only: border/glow display was disabled on Retail (Blizzard secret-value
+        --! restrictions made it unstable there) - Classic has none of that, keep it available.
+        if not Cell.isRetail then
+            tinsert(ddItems, {
+                ["text"] = L["Border"],
+                ["value"] = "Border",
+                ["onClick"] = function()
+                    widget.func("Border")
+                end,
+            })
+            tinsert(ddItems, {
+                ["text"] = L["Both"],
+                ["value"] = "Both",
+                ["onClick"] = function()
+                    widget.func("Both")
+                end,
+            })
+        end
+        widget.dropdown:SetItems(ddItems)
+
+        widget.label = widget:CreateFontString(nil, "OVERLAY", font_name)
+        widget.label:SetText(L["Display Mode"])
+        widget.label:SetPoint("BOTTOMLEFT", widget.dropdown, "TOPLEFT", 0, 1)
+
+        function widget:SetFunc(func)
+            widget.func = func
+        end
+
+        function widget:SetDBValue(value)
+            if Cell.isRetail then
+                widget.dropdown:SetSelectedValue((value == "None") and "None" or "Icons")
+            else
+                local valid = value == "None" or value == "Icons" or value == "Border" or value == "Both"
+                widget.dropdown:SetSelectedValue(valid and value or "Icons")
+            end
+        end
+    else
+        widget = settingWidgets["targetedSpellsDisplayMode"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+local CLASS_ROLES = {
+    ["DEATHKNIGHT"] = {"TANK", "DAMAGER"},
+    ["DEMONHUNTER"] = {"TANK", "DAMAGER"},
+    ["DRUID"] = {"TANK", "HEALER", "DAMAGER"},
+    ["EVOKER"] = {"HEALER", "DAMAGER"},
+    ["HUNTER"] = {"DAMAGER"},
+    ["MAGE"] = {"DAMAGER"},
+    ["MONK"] = {"TANK", "HEALER", "DAMAGER"},
+    ["PALADIN"] = {"TANK", "HEALER", "DAMAGER"},
+    ["PRIEST"] = {"HEALER", "DAMAGER"},
+    ["ROGUE"] = {"DAMAGER"},
+    ["SHAMAN"] = {"HEALER", "DAMAGER"},
+    ["WARLOCK"] = {"DAMAGER"},
+    ["WARRIOR"] = {"TANK", "DAMAGER"},
+    ["PET"] = {"DAMAGER"},
+    ["VEHICLE"] = {"DAMAGER"},
+    ["NPC"] = {"DAMAGER"},
+}
+
+local function RoleFilter_UpdateButton(b, enabled)
+    b.tex:SetDesaturated(not enabled)
+    if enabled then
+        b:SetBackdropColor(unpack(b.hoverColor))
+        b:SetScript("OnEnter", nil)
+        b:SetScript("OnLeave", nil)
+    else
+        b:SetBackdropColor(unpack(b.color))
+        b:SetScript("OnEnter", function()
+            b:SetBackdropColor(unpack(b.hoverColor))
+        end)
+        b:SetScript("OnLeave", function()
+            b:SetBackdropColor(unpack(b.color))
+        end)
+    end
+end
+
+
+local function CreateRoleFilter(parent, class, roles)
+    local filter = CreateFrame("Frame", nil, parent, "BackdropTemplate")
+    Cell.StylizeFrame(filter)
+    P.Size(filter, 170, 20)
+
+    filter.text = filter:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET")
+    filter.text:SetPoint("LEFT", 5, 0)
+    if class == "VEHICLE" or class == "PET" or class == "NPC" then
+        filter.text:SetText("|cff00ff33"..L[class])
+    else
+        filter.text:SetText(F.GetClassColorStr(class)..F.GetLocalizedClassName(class))
+    end
+
+    filter.buttons = {}
+    local last
+    for i = #roles, 1, -1 do
+        local b = Cell.CreateButton(filter, nil, "accent-hover", {20, 20})
+        filter.buttons[roles[i]] = b
+        b:SetTexture(F.GetDefaultRoleIcon(roles[i]), {16, 16}, {"CENTER", 0, 0})
+
+        if last then
+            b:SetPoint("BOTTOMRIGHT", last, "BOTTOMLEFT", P.Scale(1), 0)
+        else
+            b:SetPoint("BOTTOMRIGHT", filter)
+        end
+        last = b
+
+        b:SetScript("OnClick", function()
+            local settingsTable = parent.settingsTable
+            local enabled
+            if type(settingsTable[class]) == "boolean" then
+                settingsTable[class] = not settingsTable[class]
+                enabled = settingsTable[class]
+            else
+                settingsTable[class][roles[i]] = not settingsTable[class][roles[i]]
+                enabled = settingsTable[class][roles[i]]
+            end
+            RoleFilter_UpdateButton(b, enabled)
+            parent.func() -- fire
+        end)
+    end
+
+    function filter:Load(t)
+        if type(t) == "boolean" then
+            RoleFilter_UpdateButton(filter.buttons["DAMAGER"], t)
+        else
+            for role, b in pairs(filter.buttons) do
+                RoleFilter_UpdateButton(b, t[role])
+            end
+        end
+    end
+
+    return filter
+end
+
+local function CreateSetting_RoleFilters(parent)
+    local widget
+
+    if not settingWidgets["roleFilters"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_RoleFilters", parent, 240, 50)
+        settingWidgets["roleFilters"] = widget
+
+        -- filters
+        widget.filters = {}
+
+        local last
+        for class in F.IterateClasses() do
+            widget.filters[class] = CreateRoleFilter(widget, class, Cell.isVanilla and {"TANK", "HEALER", "DAMAGER"} or CLASS_ROLES[class])
+            if last then
+                widget.filters[class]:SetPoint("TOPLEFT", last, "BOTTOMLEFT", 0, -5)
+            else
+                widget.filters[class]:SetPoint("TOPLEFT", 5, -5)
+            end
+            last = widget.filters[class]
+        end
+
+        for _, class in pairs({"PET", "VEHICLE", "NPC"}) do
+            widget.filters[class] = CreateRoleFilter(widget, class, CLASS_ROLES[class])
+            widget.filters[class]:SetPoint("TOPLEFT", last, "BOTTOMLEFT", 0, -5)
+            last = widget.filters[class]
+        end
+
+        local n = F.Getn(widget.filters)
+        P.Height(widget, 10 + 20 * n + 5 * (n - 1))
+
+        -- callback
+        function widget:SetFunc(func)
+            widget.func = func
+        end
+
+        -- show db value
+        function widget:SetDBValue(settings)
+            widget.settingsTable = settings
+            for class, filter in pairs(widget.filters) do
+                filter:Load(settings[class])
+            end
+        end
+    else
+        widget = settingWidgets["roleFilters"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+local function ClassFilter_UpdateButton(b, enabled)
+    b.tex:SetDesaturated(not enabled)
+    if enabled then
+        b.fs:SetTextColor(unpack(b.classColor))
+    else
+        b.fs:SetTextColor(0.4, 0.4, 0.4)
+    end
+end
+
+local function CreateClassFilter(parent, class)
+    local filter = Cell.CreateButton(parent, class, "accent-hover", {120, 20})
+    filter:SetTexture("classicon-"..strlower(class), {16, 16}, {"LEFT", 2, 0}, true, true)
+
+
+    if class == "VEHICLE" or class == "PET" or class == "NPC" then
+        filter.classColor = {0, 1, 0.2}
+        filter:SetText(L[class])
+    else
+        filter.classColor = {F.GetClassColor(class)}
+        filter:SetText(F.GetLocalizedClassName(class))
+    end
+
+    filter:SetScript("OnClick", function()
+        local settingsTable = parent.settingsTable
+        settingsTable[class] = not settingsTable[class]
+        ClassFilter_UpdateButton(filter, settingsTable[class])
+        parent.func() -- fire
+    end)
+
+    function filter:Load(enabled)
+        ClassFilter_UpdateButton(filter, enabled)
+    end
+
+    return filter
+end
+
+local function CreateSetting_ClassFilters(parent)
+    local widget
+
+    if not settingWidgets["classFilters"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_ClassFilters", parent, 240, 50)
+        settingWidgets["classFilters"] = widget
+
+        -- filters
+        widget.filters = {}
+
+        local classes = {}
+        for class in F.IterateClasses() do
+            tinsert(classes, class)
+        end
+        tinsert(classes, "PET")
+        tinsert(classes, "VEHICLE")
+        tinsert(classes, "NPC")
+
+        local i, last, lastRow = 1
+        for _, class in pairs(classes) do
+            widget.filters[class] = CreateClassFilter(widget, class)
+            if last then
+                if i % 2 == 1 then
+                    widget.filters[class]:SetPoint("TOPLEFT", lastRow, "BOTTOMLEFT", 0, -5)
+                    lastRow = widget.filters[class]
+                else
+                    widget.filters[class]:SetPoint("TOPLEFT", last, "TOPRIGHT", 5, 0)
+                end
+            else
+                widget.filters[class]:SetPoint("TOPLEFT", 5, -5)
+                lastRow = widget.filters[class]
+            end
+            i = i + 1
+            last = widget.filters[class]
+        end
+
+        local n = ceil(F.Getn(widget.filters) / 2)
+        P.Height(widget, 10 + 20 * n + 5 * (n - 1))
+
+        -- callback
+        function widget:SetFunc(func)
+            widget.func = func
+        end
+
+        -- show db value
+        function widget:SetDBValue(settings)
+            widget.settingsTable = settings
+            for class, filter in pairs(widget.filters) do
+                filter:Load(settings[class])
+            end
+        end
+    else
+        widget = settingWidgets["classFilters"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+-------------------------------------------------
+-- Spell Picker dialog for custom indicators
+-------------------------------------------------
+local SpellPickerFrame
+local function RefreshSpellPicker()
+    if not SpellPickerFrame then return end
+    local state = SpellPickerFrame.state
+    local search = strlower(SpellPickerFrame.searchBox:GetText() or "")
+    local c = state.class
+    local s = state.specIndex
+    if c == "AUTO" then
+        local _, t = UnitClass("player"); c = t
+        s = GetSpecialization and GetSpecialization()
+    end
+    -- Forever: Retail's list has many spells that don't exist on this client, use the Classic list
+    local spells = (Cell.isForever and F.GetClassicHealSpells and F.GetClassicHealSpells(c))
+        or (F.GetAuraBlacklistBuffSpells and F.GetAuraBlacklistBuffSpells(c, s))
+        or (F.GetClassicHealSpells and F.GetClassicHealSpells(c))
+        or {}
+
+    for _, r in ipairs(SpellPickerFrame.rows or {}) do r:Hide(); r:ClearAllPoints() end
+    SpellPickerFrame.rows = {}
+
+    local idx = 0
+    local ar, ag, ab = Cell.GetAccentColorRGB()
+    for _, s in ipairs(spells) do
+        local name = strlower(s.display)
+        local idStr = tostring(s.spellId)
+        if search == "" or name:find(search, 1, true) or idStr:find(search, 1, true) then
+            idx = idx + 1
+            local row = CreateFrame("Button", nil, SpellPickerFrame.content, "BackdropTemplate")
+            row:SetHeight(20); row:SetPoint("TOPLEFT", 4, -((idx-1)*21))
+            row:SetPoint("TOPRIGHT", -4, -((idx-1)*21))
+            row:SetBackdrop({ bgFile = Cell.vars.whiteTexture })
+            row:SetBackdropColor(0.15, 0.15, 0.15, 0.95)
+            row.spellId = s.spellId
+
+            local ic = row:CreateTexture(nil, "ARTWORK")
+            ic:SetSize(16, 16); ic:SetPoint("LEFT", 4, 0)
+            ic:SetTexture(s.icon or 134400); ic:SetTexCoord(0.08,0.92,0.08,0.92)
+
+            local txt = row:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET")
+            txt:SetPoint("LEFT", ic, "RIGHT", 6, 0); txt:SetPoint("RIGHT", -4, 0)
+            txt:SetJustifyH("LEFT"); txt:SetText(s.display); txt:SetTextColor(1,1,1)
+
+            local abar = row:CreateTexture(nil, "ARTWORK")
+            abar:SetSize(3, 16); abar:SetPoint("LEFT", 0, 0)
+            abar:SetColorTexture(ar,ag,ab,1)
+            abar:SetShown(s.spellId == SpellPickerFrame.currentSpellId)
+
+            local function Unsel()
+                for _, r in ipairs(SpellPickerFrame.rows or {}) do
+                    r:SetBackdropColor(0.15,0.15,0.15,0.95)
+                end
+                abar:SetShown(s.spellId == SpellPickerFrame.currentSpellId)
+            end
+
+            row:SetScript("OnClick", function()
+                if SpellPickerFrame.onConfirm then
+                    SpellPickerFrame.onConfirm(s.spellId)
+                end
+                SpellPickerFrame:Hide()
+            end)
+            row:SetScript("OnEnter", function()
+                row:SetBackdropColor(0.20,0.20,0.20,0.95)
+                if CellSpellTooltip then
+                    CellSpellTooltip:SetOwner(row, "ANCHOR_RIGHT")
+                    CellSpellTooltip:SetSpellByID(s.spellId)
+                    CellSpellTooltip:Show()
+                end
+            end)
+            row:SetScript("OnLeave", function()
+                row:SetBackdropColor(0.15,0.15,0.15,0.95)
+                if CellSpellTooltip then CellSpellTooltip:Hide() end
+            end)
+
+            tinsert(SpellPickerFrame.rows, row)
+        end
+    end
+
+    local totalH = #SpellPickerFrame.rows * 21 + 4
+
+    if not SpellPickerFrame.emptyLabel then
+        SpellPickerFrame.emptyLabel = SpellPickerFrame.content:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET")
+        SpellPickerFrame.emptyLabel:SetPoint("TOPLEFT", 8, -20)
+        SpellPickerFrame.emptyLabel:SetPoint("RIGHT", -8, 0)
+        SpellPickerFrame.emptyLabel:SetTextColor(0.6, 0.6, 0.6)
+        SpellPickerFrame.emptyLabel:SetJustifyH("LEFT")
+    end
+    if #SpellPickerFrame.rows == 0 then
+        local _, classToken = UnitClass("player")
+            local noSpellsMsg = L["No spells available for your spec."]
+            if classToken and c == classToken and GetSpecialization and GetSpecializationInfo then
+                local _, specName = GetSpecializationInfo(GetSpecialization())
+                if specName then
+                    noSpellsMsg = L["No spells available for %s."]:format(specName)
+                end
+            end
+        SpellPickerFrame.emptyLabel:SetText(noSpellsMsg)
+        SpellPickerFrame.emptyLabel:Show()
+        totalH = 40
+    else
+        SpellPickerFrame.emptyLabel:Hide()
+    end
+
+    SpellPickerFrame.content:SetHeight(math.max(totalH, 100))
+end
+
+local function ConfirmPickerSpellId(spellId)
+    spellId = tonumber(spellId)
+    if not spellId or spellId <= 0 then
+        F.Print(L["Invalid spell id."])
+        return
+    end
+    if SpellPickerFrame and SpellPickerFrame.onConfirm then
+        SpellPickerFrame.onConfirm(spellId)
+    end
+    if SpellPickerFrame then
+        SpellPickerFrame:Hide()
+    end
+end
+
+local function CreateSpellPicker()
+    if SpellPickerFrame and SpellPickerFrame.searchBox and SpellPickerFrame.classBtn and SpellPickerFrame.idBox then return end
+    SpellPickerFrame = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
+    SpellPickerFrame:SetSize(260, 360)
+    Cell.StylizeFrame(SpellPickerFrame, {0.08,0.08,0.08,1}, {0.25,0.25,0.25,1})
+    SpellPickerFrame:SetFrameStrata("DIALOG")
+    SpellPickerFrame:SetFrameLevel(600)
+    SpellPickerFrame:EnableMouse(true)
+    SpellPickerFrame:SetToplevel(true)
+    SpellPickerFrame.state = { class = "AUTO", specIndex = nil }
+
+    local title = SpellPickerFrame:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET")
+    title:SetPoint("TOPLEFT", 8, -6); title:SetText(L["Select Spell"]); title:SetTextColor(1,1,1)
+
+    local closeBtn = Cell.CreateButton(SpellPickerFrame, "×", "red", {18,18}, false, false, "CELL_FONT_SPECIAL", "CELL_FONT_SPECIAL")
+    closeBtn:SetPoint("TOPRIGHT", -4, -4)
+    closeBtn:SetScript("OnClick", function() SpellPickerFrame:Hide() end)
+
+    local tabH = 22
+    local b1 = CreateFrame("Button", nil, SpellPickerFrame, "BackdropTemplate")
+    b1:SetSize(70, tabH); b1:SetPoint("TOPLEFT", 6, -26)
+    b1:SetBackdrop({ bgFile = Cell.vars.whiteTexture })
+    b1:SetBackdropColor(0.20,0.20,0.20,0.95)
+    do local t = b1:CreateFontString(nil,"OVERLAY","CELL_FONT_WIDGET")
+        t:SetPoint("CENTER"); t:SetText(L["Buffs"]); t:SetTextColor(1,1,1)
+    end
+    b1:SetScript("OnEnter", function() b1:SetBackdropColor(0.30,0.30,0.30,0.95) end)
+    b1:SetScript("OnLeave", function() b1:SetBackdropColor(0.20,0.20,0.20,0.95) end)
+
+    do
+        local function BuildSpecLabels()
+            local labels = {}
+            if Cell.isForever then return labels end -- no specs on Forever
+            for classToken, names in pairs(F.AuraBlacklistSpecNames or {}) do
+                for i, name in ipairs(names) do
+                    local spells = F.GetAuraBlacklistBuffSpells(classToken, i)
+                    if spells and #spells > 0 then
+                        labels[classToken] = labels[classToken] or {}
+                        labels[classToken][i] = name
+                    end
+                end
+            end
+            return labels
+        end
+
+        local function BuildItems()
+            local specLabels = BuildSpecLabels()
+            local items = {}
+            local c = SpellPickerFrame.state.class
+            local specIdx = SpellPickerFrame.state.specIndex
+
+            local autoLabel = "|cffbababaAuto|r"
+            local _, classToken = UnitClass("player")
+            if classToken and specLabels[classToken] and GetSpecialization and GetSpecializationInfo then
+                local mySpec = GetSpecialization()
+                if mySpec then
+                    local _, specName = GetSpecializationInfo(mySpec)
+                    if specName then autoLabel = ("|cffbababaAuto (%s %s)|r"):format(specName, classToken) end
+                end
+            end
+            tinsert(items, { label = autoLabel, value = "AUTO", specIdx = nil })
+
+            tinsert(items, { label = "---", value = nil, isSep = true })
+
+            local classOrder = (Cell.isForever and F.GetClassicHealClassOrder and F.GetClassicHealClassOrder())
+                or F.AuraBlacklistClassOrder
+                or (F.AuraBlacklistClassNames and {"PRIEST","DRUID","PALADIN","SHAMAN","MONK","EVOKER","MAGE","WARRIOR","ROGUE","HUNTER"})
+                or (F.GetClassicHealClassOrder and F.GetClassicHealClassOrder())
+                or {}
+            for _, ct in ipairs(classOrder) do
+                local r, g, b = F.GetClassColor(ct)
+                local colorStr = ("%02x%02x%02x"):format(r*255, g*255, b*255)
+                local localized = F.GetLocalizedClassName(ct) or ct
+                local specs = specLabels[ct] or {}
+                if next(specs) then
+                    for si, sn in pairs(specs) do
+                        tinsert(items, {
+                            label = ("|cff%s%s (%s)|r"):format(colorStr, localized, sn),
+                            value = ct,
+                            specIdx = si,
+                            indent = true,
+                        })
+                    end
+                else
+                    tinsert(items, {
+                        label = ("|cff%s%s|r"):format(colorStr, localized),
+                        value = ct,
+                        specIdx = nil,
+                    })
+                end
+            end
+            return items
+        end
+
+        local btn = CreateFrame("Button", nil, SpellPickerFrame, "BackdropTemplate")
+        btn:SetPoint("TOPLEFT", b1, "TOPRIGHT", 10, 2)
+        btn:SetPoint("TOPRIGHT", -8, 2)
+        btn:SetHeight(20)
+        btn:SetBackdrop({ bgFile = Cell.vars.whiteTexture })
+        btn:SetBackdropColor(0.115,0.115,0.115,0.95)
+        do local t = btn:CreateFontString(nil,"OVERLAY","CELL_FONT_WIDGET")
+            t:SetPoint("LEFT", 6, 0); t:SetPoint("RIGHT", -6, 0)
+            t:SetJustifyH("LEFT"); t:SetText("|cffbababaAuto|r")
+            btn.text = t
+        end
+        btn:SetScript("OnEnter", function() btn:SetBackdropColor(0.20,0.20,0.20,0.95) end)
+        btn:SetScript("OnLeave", function() btn:SetBackdropColor(0.115,0.115,0.115,0.95) end)
+        SpellPickerFrame.classBtn = btn
+
+        local ddFrame = CreateFrame("Frame", nil, SpellPickerFrame, "BackdropTemplate")
+        ddFrame:SetPoint("TOPLEFT", btn, "BOTTOMLEFT", 0, -2)
+        ddFrame:SetPoint("TOPRIGHT", btn, "BOTTOMRIGHT", 0, -2)
+        ddFrame:SetBackdrop({ bgFile = Cell.vars.whiteTexture, edgeFile = Cell.vars.whiteTexture, edgeSize = 1 })
+        ddFrame:SetBackdropColor(0.08,0.08,0.08,0.98)
+        ddFrame:SetBackdropBorderColor(0.3,0.3,0.3,1)
+        ddFrame:SetFrameLevel(SpellPickerFrame:GetFrameLevel() + 50)
+        ddFrame:Hide()
+        local ddButtons = {}
+
+        local function RefreshDropdown()
+            for _, b in ipairs(ddButtons) do b:Hide(); b:ClearAllPoints() end
+            wipe(ddButtons)
+            local items = BuildItems()
+            local ar, ag, ab = Cell.GetAccentColorRGB()
+            local yOff = 0
+            for _, item in ipairs(items) do
+                if item.isSep then
+                    local line = ddFrame:CreateTexture(nil, "ARTWORK")
+                    line:SetHeight(1); line:SetPoint("LEFT", 4, yOff); line:SetPoint("RIGHT", -4, yOff)
+                    line:SetColorTexture(0.25,0.25,0.25,1)
+                    tinsert(ddButtons, line)
+                    yOff = yOff - 8
+                else
+                    local b = CreateFrame("Button", nil, ddFrame, "BackdropTemplate")
+                    b:SetHeight(20); b:SetPoint("TOPLEFT", 1, yOff); b:SetPoint("TOPRIGHT", -1, yOff)
+                    b:SetBackdrop({ bgFile = Cell.vars.whiteTexture })
+                    b:SetBackdropColor(0.12,0.12,0.12,0.95)
+                    do local t = b:CreateFontString(nil,"OVERLAY","CELL_FONT_WIDGET")
+                        t:SetPoint("LEFT", item.indent and 16 or 6, 0); t:SetPoint("RIGHT", -4, 0)
+                        t:SetJustifyH("LEFT"); t:SetText(item.label)
+                        b.text = t
+                    end
+                    b:SetScript("OnClick", function()
+                        btn.text:SetText(item.label)
+                        SpellPickerFrame.state.class = item.value
+                        SpellPickerFrame.state.specIndex = item.specIdx
+                        ddFrame:Hide()
+                        RefreshSpellPicker()
+                    end)
+                    b:SetScript("OnEnter", function() b:SetBackdropColor(0.25,0.25,0.25,0.95) end)
+                    b:SetScript("OnLeave", function() b:SetBackdropColor(0.12,0.12,0.12,0.95) end)
+                    tinsert(ddButtons, b)
+                    yOff = yOff - 24
+                end
+            end
+            local h = -yOff + 4
+            ddFrame:SetHeight(h)
+        end
+
+        btn:SetScript("OnClick", function()
+            if ddFrame:IsShown() then ddFrame:Hide(); return end
+            RefreshDropdown()
+            ddFrame:Show()
+        end)
+
+        SpellPickerFrame:SetScript("OnHide", function()
+            ddFrame:Hide()
+            if CellSpellTooltip then CellSpellTooltip:Hide() end
+            SpellPickerFrame.searchBox:SetText("")
+            if SpellPickerFrame.idBox then
+                SpellPickerFrame.idBox:SetText("")
+            end
+            SpellPickerFrame.selectedId = nil
+        end)
+    end
+
+    do
+        local sb = Cell.CreateEditBox(SpellPickerFrame, 20, 20, false, false, true)
+        sb:SetPoint("TOPLEFT", b1, "BOTTOMLEFT", 0, -4)
+        sb:SetPoint("TOPRIGHT", -8, -4)
+        sb:SetHeight(20)
+        sb:SetAutoFocus(false)
+        sb:SetScript("OnTextChanged", function() RefreshSpellPicker() end)
+        SpellPickerFrame.searchBox = sb
+        local tip = sb:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET")
+        tip:SetPoint("LEFT", 4, 0); tip:SetText(L["Search"].."..."); tip:SetTextColor(0.4,0.4,0.4)
+        sb:HookScript("OnEditFocusGained", function() tip:Hide() end)
+        sb:HookScript("OnEditFocusLost", function() if sb:GetText() == "" then tip:Show() end end)
+    end
+
+    do
+        local container = CreateFrame("Frame", nil, SpellPickerFrame)
+        container:SetPoint("TOPLEFT", 4, -58)
+        container:SetPoint("BOTTOMRIGHT", -4, 58)
+        Cell.CreateScrollFrame(container)
+        SpellPickerFrame.scrollFrame = container.scrollFrame
+        SpellPickerFrame.content = container.scrollFrame.content
+    end
+
+    do
+        local idBox = Cell.CreateEditBox(SpellPickerFrame, 20, 20, false, false, true)
+        idBox:SetPoint("BOTTOMLEFT", 8, 32)
+        idBox:SetPoint("BOTTOMRIGHT", -72, 32)
+        idBox:SetHeight(20)
+        idBox:SetAutoFocus(false)
+        SpellPickerFrame.idBox = idBox
+        local tip = idBox:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET")
+        tip:SetPoint("LEFT", 4, 0)
+        tip:SetText(L["Input spell id"])
+        tip:SetTextColor(0.4, 0.4, 0.4)
+        SpellPickerFrame.idBoxTip = tip
+        idBox:HookScript("OnEditFocusGained", function() tip:Hide() end)
+        idBox:HookScript("OnEditFocusLost", function()
+            if idBox:GetText() == "" then tip:Show() end
+        end)
+        idBox:HookScript("OnTextChanged", function()
+            tip:SetShown(idBox:GetText() == "" and not idBox:HasFocus())
+        end)
+        idBox:SetScript("OnEnterPressed", function()
+            ConfirmPickerSpellId(idBox:GetText())
+        end)
+
+        local addBtn = Cell.CreateButton(SpellPickerFrame, L["Add"], "accent", {60, 22})
+        addBtn:SetPoint("BOTTOMRIGHT", -8, 30)
+        addBtn:SetScript("OnClick", function()
+            ConfirmPickerSpellId(idBox:GetText())
+        end)
+        SpellPickerFrame.idAddBtn = addBtn
+    end
+
+    local cancelBtn = Cell.CreateButton(SpellPickerFrame, L["Cancel"], "red-hover", {60, 22})
+    cancelBtn:SetPoint("BOTTOMRIGHT", -50, 6)
+    cancelBtn:SetScript("OnClick", function() SpellPickerFrame:Hide() end)
+
+    local okBtn = Cell.CreateButton(SpellPickerFrame, L["Confirm"], "green", {60, 22})
+    okBtn:SetPoint("RIGHT", cancelBtn, "LEFT", -4, 0)
+    okBtn:SetScript("OnClick", function()
+        local typed = SpellPickerFrame.idBox and tonumber(SpellPickerFrame.idBox:GetText())
+        local id = SpellPickerFrame.selectedId or typed
+        if id then
+            ConfirmPickerSpellId(id)
+        else
+            SpellPickerFrame:Hide()
+        end
+    end)
+end
+
+function Cell.ShowSpellPicker(parent, currentSpellId, onConfirm)
+    CreateSpellPicker()
+    SpellPickerFrame.state = { class = "AUTO", specIndex = nil }
+    SpellPickerFrame.currentSpellId = currentSpellId
+    SpellPickerFrame.selectedId = currentSpellId or nil
+    SpellPickerFrame.onConfirm = onConfirm
+    SpellPickerFrame:ClearAllPoints()
+    SpellPickerFrame:SetPoint("TOPLEFT", parent, "TOPLEFT", -10, 5)
+    SpellPickerFrame:SetSize(280, 410)
+    SpellPickerFrame:SetFrameStrata("DIALOG")
+    SpellPickerFrame:SetFrameLevel(600)
+    SpellPickerFrame:SetToplevel(true)
+    if SpellPickerFrame.idBox then
+        local idText = currentSpellId and tostring(currentSpellId) or ""
+        SpellPickerFrame.idBox:SetText(idText)
+        if SpellPickerFrame.idBoxTip then
+            SpellPickerFrame.idBoxTip:SetShown(idText == "")
+        end
+    end
+    if CellSpellTooltip then CellSpellTooltip:Hide() end
+    RefreshSpellPicker()
+    SpellPickerFrame:Show()
+
+    if parent and not parent._spellPickerHooked then
+        parent._spellPickerHooked = true
+        parent:HookScript("OnHide", function()
+            if SpellPickerFrame and SpellPickerFrame:IsShown() then
+                SpellPickerFrame:Hide()
+            end
+        end)
+    end
+end
+
+-----------------------------------------
+-- CreateSetting_AuraBlacklist
+-----------------------------------------
+local function CreateSetting_AuraBlacklist(parent)
+    local widget
+
+    if not settingWidgets["auraBlacklist"] then
+        local pairs, ipairs, tinsert = pairs, ipairs, table.insert
+        local wipe = table.wipe
+
+        widget = Cell.CreateFrame("CellIndicatorSettings_AuraBlacklist", parent, 240, 155)
+        settingWidgets["auraBlacklist"] = widget
+
+        local state = { filter = "buffs", class = "AUTO", spec = nil }
+        local ar, ag, ab = Cell.GetAccentColorRGB()
+
+        local function DBFilter()  return state.filter == "buffs" and "HELPFUL" or "HARMFUL"  end
+
+        local function Spells()
+            if state.filter == "debuffs" then
+                return (F.GetAuraBlacklistDebuffSpells and F.GetAuraBlacklistDebuffSpells()) or {}
+            end
+            local c = state.class
+            local s = state.spec
+            if c == "AUTO" then
+                local _, t = UnitClass("player"); c = t
+                s = nil
+            end
+            return (F.GetAuraBlacklistBuffSpells and F.GetAuraBlacklistBuffSpells(c, s)) or {}
+        end
+
+        local DD_Y = -5
+        local SPEC_Y = -28
+        local FILTER_Y = -50
+        local HEADER_Y = -78
+        local FIRST_ROW_Y = -98
+        local ROW_H = 20
+        local ROW_GAP = 6
+
+        local spellRows = {}
+        local Refresh
+
+        local function MakeRow(spell, idx)
+            local sid = spell.spellId
+            local f = DBFilter()
+            local en = F.GetAuraBlacklistEntry(sid, f)
+            local bl = en ~= nil
+
+            local row = CreateFrame("Button", nil, widget, "BackdropTemplate")
+            row:SetHeight(ROW_H)
+            local yOff = FIRST_ROW_Y - (idx-1)*(ROW_H + ROW_GAP)
+            row:SetPoint("TOPLEFT", 8, yOff)
+            row:SetPoint("TOPRIGHT", -8, yOff)
+            row:SetBackdrop({ bgFile = Cell.vars.whiteTexture })
+            row:SetBackdropColor(bl and 0.25 or 0.15, bl and 0.25 or 0.15, bl and 0.25 or 0.15, 0.95)
+
+            local abar = row:CreateTexture(nil, "ARTWORK")
+            abar:SetSize(3, ROW_H-4); abar:SetPoint("LEFT", 2, 0)
+            abar:SetColorTexture(ar,ag,ab,1); abar:SetShown(bl)
+
+            local icon = row:CreateTexture(nil, "ARTWORK")
+            icon:SetSize(16, 16); icon:SetPoint("LEFT", 8, 0)
+            icon:SetTexture(spell.icon or 134400); icon:SetTexCoord(0.08,0.92,0.08,0.92)
+            if not bl then icon:SetAlpha(0.5) end
+
+            local txt = row:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET")
+            txt:SetPoint("LEFT", icon, "RIGHT", 6, 0); txt:SetPoint("RIGHT", -140, 0)
+            txt:SetJustifyH("LEFT"); txt:SetText(spell.display)
+            txt:SetTextColor(1, 1, 1)
+
+            local function Upd()
+                local ne = F.GetAuraBlacklistEntry(sid, f)
+                local nb = ne ~= nil
+                row:SetBackdropColor(nb and 0.25 or 0.15, nb and 0.25 or 0.15, nb and 0.25 or 0.15, 0.95)
+                abar:SetShown(nb); icon:SetAlpha(nb and 1 or 0.5)
+                txt:SetTextColor(1, 1, 1)
+            end
+
+            do
+                local skip = true
+                local cb = Cell.CreateCheckButton(row, "", function(checked)
+                    if skip then return end
+                    local e = F.GetAuraBlacklistEntry(sid, f)
+                    if e then
+                        if checked or e.ooc then F.ToggleAuraBlacklist(sid, f, checked, e.ooc)
+                        else F.RemoveAuraBlacklist(sid, f) end
+                    else F.ToggleAuraBlacklist(sid, f, true, false) end
+                    Upd()
+                    Cell.Fire("UpdateIndicators", Cell.vars.currentLayout, "", "bigDebuffs")
+                end)
+                cb:SetSize(16, 16)
+                cb:SetPoint("RIGHT", row, "RIGHT", -102, 0)
+                cb:SetChecked(bl and en.combat or false)
+                skip = false
+            end
+
+            do
+                local skip = true
+                local cb = Cell.CreateCheckButton(row, "", function(checked)
+                    if skip then return end
+                    local e = F.GetAuraBlacklistEntry(sid, f)
+                    if e then
+                        if checked or e.combat then F.ToggleAuraBlacklist(sid, f, e.combat, checked)
+                        else F.RemoveAuraBlacklist(sid, f) end
+                    else F.ToggleAuraBlacklist(sid, f, false, true) end
+                    Upd()
+                    Cell.Fire("UpdateIndicators", Cell.vars.currentLayout, "", "bigDebuffs")
+                end)
+                cb:SetSize(16, 16)
+                cb:SetPoint("RIGHT", row, "RIGHT", -42, 0)
+                cb:SetChecked(bl and en.ooc or false)
+                skip = false
+            end
+
+            row:SetScript("OnClick", function()
+                local e = F.GetAuraBlacklistEntry(sid, f)
+                if e then F.RemoveAuraBlacklist(sid, f)
+                else F.ToggleAuraBlacklist(sid, f, true, true) end
+                Upd()
+                Cell.Fire("UpdateIndicators", Cell.vars.currentLayout, "", "bigDebuffs")
+            end)
+
+            row:SetScript("OnEnter", function(self)
+                row:SetBackdropColor(bl and 0.30 or 0.20, bl and 0.30 or 0.20, bl and 0.30 or 0.20, 0.95)
+                if CellSpellTooltip then
+                    pcall(function()
+                        CellSpellTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                        CellSpellTooltip:SetSpellByID(sid)
+                        CellSpellTooltip:Show()
+                    end)
+                end
+            end)
+            row:SetScript("OnLeave", function() Upd(); if CellSpellTooltip then CellSpellTooltip:Hide() end end)
+
+            return row
+        end
+
+        Refresh = function()
+            for _, r in ipairs(spellRows) do r:Hide(); r:ClearAllPoints() end
+            wipe(spellRows)
+            local spells = Spells()
+            for i, s in ipairs(spells) do tinsert(spellRows, MakeRow(s, i)) end
+            local n = #spells
+            local rowsH = n > 0 and (n * ROW_H + (n-1) * ROW_GAP) or 0
+            local hContent = -FIRST_ROW_Y + rowsH + 36
+            widget:SetHeight(math.max(155, hContent))
+            Cell.UpdateIndicatorSettingsHeight()
+        end
+
+        do
+            local dd = Cell.CreateDropdown(widget, 224)
+            dd:SetPoint("TOPLEFT", 8, DD_Y)
+
+            local items = {
+                { text = "|cffbababaAuto|r", value = "AUTO",
+                  onClick = function() state.class = "AUTO"; state.spec = nil;
+                      if widget.specDD then widget.specDD:Hide() end
+                      Refresh()
+                  end },
+            }
+            local classes = { "PRIEST","DRUID","PALADIN","SHAMAN","MONK","EVOKER","MAGE","WARRIOR","ROGUE","HUNTER" }
+            for _, c in ipairs(classes) do
+                local r, g, b = F.GetClassColor(c)
+                local localized = F.GetLocalizedClassName(c) or c
+                tinsert(items, {
+                    text = ("|cff%02x%02x%02x%s|r"):format(r*255, g*255, b*255, localized),
+                    value = c,
+                    onClick = function()
+                        state.class = c; state.spec = nil
+                        if widget.specDD then
+                            local sNames = (F.AuraBlacklistSpecNames and F.AuraBlacklistSpecNames[c]) or {}
+                            local sItems = {
+                                { text = L["All specs"],
+                                  value = nil,
+                                  onClick = function() state.spec = nil; Refresh() end },
+                            }
+                            for si, sName in ipairs(sNames) do
+                                local specIdx = si
+                                tinsert(sItems, {
+                                    text = "  " .. sName,
+                                    value = specIdx,
+                                    onClick = function() state.spec = specIdx; Refresh() end,
+                                })
+                            end
+                            widget.specDD:SetItems(sItems)
+                            widget.specDD:SetSelectedValue(nil)
+                            widget.specDD:SetShown(true)
+                        end
+                        Refresh()
+                    end,
+                })
+            end
+            dd:SetItems(items)
+            dd:SetSelectedValue(state.class)
+            widget.classDD = dd
+        end
+
+        do
+            local specDD = Cell.CreateDropdown(widget, 224)
+            specDD:SetPoint("TOPLEFT", 8, SPEC_Y)
+            specDD:SetShown(state.class ~= "AUTO")
+            widget.specDD = specDD
+        end
+
+        local bw, bh = 80, 22
+        local b1 = CreateFrame("Button", nil, widget, "BackdropTemplate")
+        b1:SetSize(bw, bh); b1:SetPoint("TOPLEFT", 5, FILTER_Y)
+        b1:SetBackdrop({ bgFile = Cell.vars.whiteTexture })
+        b1:SetBackdropColor(0.20,0.20,0.20,0.95)
+        do local t = b1:CreateFontString(nil,"OVERLAY","CELL_FONT_WIDGET")
+            t:SetPoint("CENTER"); t:SetText("Buffs"); t:SetTextColor(1,1,1)
+        end
+
+        local b2 = CreateFrame("Button", nil, widget, "BackdropTemplate")
+        b2:SetSize(bw, bh); b2:SetPoint("LEFT", b1, "RIGHT", 4, 0)
+        b2:SetBackdrop({ bgFile = Cell.vars.whiteTexture })
+        b2:SetBackdropColor(0.08,0.08,0.08,0.95)
+        do local t = b2:CreateFontString(nil,"OVERLAY","CELL_FONT_WIDGET")
+            t:SetPoint("CENTER"); t:SetText("Debuffs"); t:SetTextColor(1,1,1)
+        end
+
+        local function UpdTabs()
+            local c = state.filter == "buffs" and 0.20 or 0.08
+            b1:SetBackdropColor(c,c,c,0.95)
+            c = state.filter == "debuffs" and 0.20 or 0.08
+            b2:SetBackdropColor(c,c,c,0.95)
+        end
+        UpdTabs()
+
+        local function ShowClassDD(shown)
+            widget.classDD:SetShown(shown)
+            if widget.specDD then
+                widget.specDD:SetShown(shown and state.class ~= "AUTO")
+            end
+        end
+
+        b1:SetScript("OnClick", function()
+            if state.filter == "buffs" then return end
+            state.filter = "buffs"
+            ShowClassDD(true)
+            UpdTabs(); Refresh()
+        end)
+        b1:SetScript("OnEnter", function() b1:SetBackdropColor(0.30,0.30,0.30,0.95) end)
+        b1:SetScript("OnLeave", UpdTabs)
+        b2:SetScript("OnClick", function()
+            if state.filter == "debuffs" then return end
+            state.filter = "debuffs"
+            ShowClassDD(false)
+            UpdTabs(); Refresh()
+        end)
+        b2:SetScript("OnEnter", function() b2:SetBackdropColor(0.30,0.30,0.30,0.95) end)
+        b2:SetScript("OnLeave", UpdTabs)
+
+        local hdr = widget:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET_SMALL")
+        hdr:SetPoint("TOPLEFT", 8, HEADER_Y); hdr:SetText("Spell"); hdr:SetTextColor(0.6,0.6,0.6)
+        local chCombat = widget:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET_SMALL")
+        chCombat:SetPoint("TOPLEFT", 138, HEADER_Y); chCombat:SetText("Combat"); chCombat:SetTextColor(0.6,0.6,0.6)
+        local chOOC = widget:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET_SMALL")
+        chOOC:SetPoint("TOPLEFT", 206, HEADER_Y); chOOC:SetText("OOC"); chOOC:SetTextColor(0.6,0.6,0.6)
+
+        local footer = widget:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET_SMALL")
+        footer:SetPoint("BOTTOMLEFT", 8, 4)
+        footer:SetPoint("BOTTOMRIGHT", -8, 4)
+        footer:SetText("Click a spell to toggle. Combat = hidden in combat, OOC = hidden out of combat.")
+        footer:SetTextColor(0.45,0.45,0.45)
+        footer:SetJustifyH("LEFT")
+        footer:SetJustifyV("BOTTOM")
+        footer:SetWordWrap(true)
+        footer:SetSpacing(1)
+
+        function widget:SetFunc(func) end
+        function widget:SetDBValue() Refresh() end
+    else
+        widget = settingWidgets["auraBlacklist"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+-----------------------------------------
+-- update parent height
+-----------------------------------------
+local settingsParent
+function Cell.UpdateIndicatorSettingsHeight()
+    local count, height = 0, 0
+    for _, w in pairs(settingWidgets) do
+        if w:IsShown() then
+            count = count + 1
+            height = height + w:GetHeight()
+        end
+    end
+    settingsParent:SetHeight(height + (count-1)*P.Scale(10) + P.Scale(24))
+end
+
+-----------------------------------------
+-- create
+-----------------------------------------
+local builders = {
+    ["enabled"] = CreateSetting_Enabled,
+    ["vehicleNamePosition"] = CreateSetting_VehicleNamePosition,
+    ["statusPosition"] = CreateSetting_StatusPosition,
+    ["shieldBarPosition"] = CreateSetting_ShieldBarPosition,
+    ["anchor"] = CreateSetting_Anchor,
+    ["size"] = CreateSetting_Size,
+    ["size-normal-big"] = CreateSetting_SizeNormalBig,
+    ["size-square"] = CreateSetting_SizeSquare,
+    -- ["size-bar"] = CreateSetting_SizeBar,
+    ["size-border"] = CreateSetting_SizeAndBorder,
+    ["spacing"] = CreateSetting_Spacing,
+    ["thickness"] = CreateSetting_Thickness,
+    ["height"] = CreateSetting_Height,
+    ["textWidth"] = CreateSetting_TextWidth,
+    ["alpha"] = CreateSetting_Alpha,
+    ["healthFormat"] = CreateSetting_HealthFormat,
+    ["powerFormat"] = CreateSetting_PowerFormat,
+    ["durationVisibility"] = CreateSetting_DurationVisibility,
+    ["durationVisibilitySimple"] = CreateSetting_DurationVisibilitySimple,
+    ["orientation"] = CreateSetting_Orientation,
+    ["barOrientation"] = CreateSetting_BarOrientation,
+    ["glowStyle"] = CreateSetting_GlowStyle,
+    ["font-noOffset"] = CreateSetting_FontNoOffset,
+    ["color"] = CreateSetting_Color,
+    ["color-alpha"] = CreateSetting_ColorAlpha,
+    ["durationBarOptions"] = CreateSetting_DurationBarOptions,
+    ["colors"] = CreateSetting_Colors,
+    ["colors-static"] = CreateSetting_ColorsStatic,
+    ["blockColors"] = CreateSetting_BlockColors,
+    ["rectColors"] = CreateSetting_RectColors,
+    ["overlayColors"] = CreateSetting_OverlayColors,
+    ["customColors"] = CreateSetting_CustomColors,
+    ["color-class"] = CreateSetting_ClassColor,
+    ["color-power"] = CreateSetting_PowerColor,
+    ["statusColors"] = CreateSetting_StatusColors,
+    ["duration"] = CreateSetting_Duration,
+    ["duration-static"] = CreateSetting_DurationStatic,
+    ["stack"] = CreateSetting_Stack,
+    ["roleTexture"] = CreateSetting_RoleTexture,
+    ["glow"] = CreateSetting_Glow,
+    ["glowOptions"] = CreateSetting_Glow,
+    ["targetedSpellsGlow"] = CreateSetting_Glow,
+    ["texture"] = CreateSetting_Texture,
+    ["builtInAoEHealings"] = CreateSetting_BuiltIns,
+    ["builtInDefensives"] = CreateSetting_BuiltIns,
+    ["builtInExternals"] = CreateSetting_BuiltIns,
+    ["builtInOffensives"] = CreateSetting_BuiltIns,
+    ["builtInCrowdControls"] = CreateSetting_BuiltIns,
+    ["actionsPreview"] = CreateSetting_ActionsPreview,
+    ["actionsList"] = CreateSetting_ActionsList,
+    ["highlightType"] = CreateSetting_HighlightType,
+    ["thresholds"] = CreateSetting_Thresholds,
+    ["privateAuraOptions"] = CreateSetting_PrivateAuraOptions,
+    ["privateAuraOrientation"] = CreateSetting_PrivateAuraOrientation,
+    ["warning"] = CreateSetting_Warning,
+    ["shape"] = CreateSetting_Shape,
+    ["targetCounterFilters"] = CreateSetting_TargetCounterFilters,
+    ["dispelFilters"] = CreateSetting_DispelFilters,
+    ["highlightDebuffFilters"] = CreateSetting_HighlightDebuffFilters,
+    ["castBy"] = CreateSetting_CastBy,
+    -- ["showOn"] = CreateSetting_ShowOn,
+    ["builtInAuraBlacklist"] = CreateSetting_AuraBlacklist,
+    ["auras-picker"] = CreateSetting_AurasPicker,
+    ["maxValue"] = CreateSetting_MaxValue,
+    ["iconStyle"] = CreateSetting_IconStyle,
+    ["animationStyle"] = CreateSetting_AnimationStyle,
+    ["targetedSpellsDisplayMode"] = CreateSetting_TargetedSpellsDisplayMode,
+    ["powerTextFilters"] = CreateSetting_RoleFilters,
+}
+
+function Cell.CreateIndicatorSettings(parent, settingsTable)
+    settingsParent = parent
+
+    local widgetsTable = {}
+
+    -- hide all
+    for _, w in pairs(settingWidgets) do
+        w:Hide()
+        w:ClearAllPoints()
+    end
+
+    -- return and show
+    for _, setting in pairs(settingsTable) do
+        if builders[setting] then
+            tinsert(widgetsTable, builders[setting](parent))
+        elseif setting == "position" then
+            tinsert(widgetsTable, CreateSetting_Position(parent))
+        elseif setting == "position-noHCenter" then
+            tinsert(widgetsTable, CreateSetting_PositionNoHCenter(parent))
+        elseif strfind(setting, "^frameLevel") then
+            tinsert(widgetsTable, CreateSetting_FrameLevel(parent))
+        elseif string.find(setting, "^num:") then
+            tinsert(widgetsTable, CreateSetting_Num(parent))
+        elseif string.find(setting, "^numPerLine:") then
+            tinsert(widgetsTable, CreateSetting_NumPerLine(parent))
+        elseif string.find(setting, "^font%-noOffset:") then
+            tinsert(widgetsTable, CreateSetting_FontNoOffset(parent))
+        elseif string.find(setting, "^font") then
+            tinsert(widgetsTable, CreateSetting_Font(parent, string.match(setting, "^(font%d?):?.*$")))
+        elseif string.find(setting, "^checkbutton%-thickness") then
+            tinsert(widgetsTable, CreateSetting_CheckButtonThickness(parent))
+        elseif string.find(setting, "^checkbutton6") then
+            tinsert(widgetsTable, CreateSetting_CheckButton6(parent))
+        elseif string.find(setting, "^checkbutton5") then
+            tinsert(widgetsTable, CreateSetting_CheckButton5(parent))
+        elseif string.find(setting, "^checkbutton4") then
+            tinsert(widgetsTable, CreateSetting_CheckButton4(parent))
+        elseif string.find(setting, "^checkbutton3") then
+            tinsert(widgetsTable, CreateSetting_CheckButton3(parent))
+        elseif string.find(setting, "^checkbutton2") then
+            tinsert(widgetsTable, CreateSetting_CheckButton2(parent))
+        elseif string.find(setting, "^checkbutton") then
+            tinsert(widgetsTable, CreateSetting_CheckButton(parent))
+        elseif setting == "auras" or setting == "debuffBlacklist" or setting == "dispelBlacklist" or setting == "targetedSpellsList"
+        or setting == "customAoEHealings" or setting == "customDefensives" or setting == "customExternals" or setting == "customOffensives" or setting == "customCrowdControls" then
+            tinsert(widgetsTable, CreateSetting_Auras(parent, 1))
+        elseif setting == "auras2" or setting == "bigDebuffs" then
+            tinsert(widgetsTable, CreateSetting_Auras(parent, 2))
+        -- elseif setting == "cleuAuras" then
+        --     tinsert(widgetsTable, CreateSetting_CleuAuras(parent))
+        elseif string.find(setting, "^warning:") then
+            tinsert(widgetsTable, CreateSetting_Warning(parent))
+        else -- tips
+            tinsert(widgetsTable, CreateSetting_Tips(parent, setting))
+        end
+    end
+
+    return widgetsTable
+end
