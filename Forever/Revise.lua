@@ -3945,6 +3945,35 @@ function F.Revise()
         end
     end
 
+    -- One-time: insert the new "Targeted Spell Bars" indicator (index 28, right after
+    -- "Targeted Spells") into every existing layout. Same dedicated-flag reasoning as
+    -- clearedBadDefaultActions above -- dbRevision can't gate this granularly on r277.x.
+    if not CellDB["addedTargetedSpellBars"] then
+        CellDB["addedTargetedSpellBars"] = true
+        local index = Cell.defaults.indicatorIndices.targetedSpellBars
+        for _, layout in pairs(CellDB["layouts"]) do
+            if type(layout["indicators"]) == "table"
+                and (not layout["indicators"][index] or layout["indicators"][index]["indicatorName"] ~= "targetedSpellBars") then
+                tinsert(layout.indicators, index, {
+                    ["name"] = "Targeted Spell Bars",
+                    ["indicatorName"] = "targetedSpellBars",
+                    ["type"] = "built-in",
+                    ["enabled"] = false,
+                    ["where"] = "both",
+                    ["sortMode"] = "startTime",
+                    ["showIcon"] = true,
+                    ["showTargetText"] = true,
+                    ["showSpellName"] = true,
+                    ["num"] = 5,
+                    ["size"] = {240, 20},
+                    ["orientation"] = "top-to-bottom",
+                    ["color"] = {0.70, 0.40, 0.90, 1},
+                    ["importantColor"] = {1, 0.85, 0.1, 1},
+                })
+            end
+        end
+    end
+
     CellDB["revise"] = Cell.version
     if CellCharacterDB then
         CellCharacterDB["revise"] = Cell.version

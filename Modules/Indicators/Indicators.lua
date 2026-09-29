@@ -2063,6 +2063,13 @@ if Cell.isRetail or Cell.isMists then
         indicatorSettings["powerWordShield"] = {"enabled", "checkbutton:shieldByMe", "shape", "size-square", "position", "frameLevel"}
     end
 
+    -- Retail only (not Mists, even though this whole table is shared with it) -- relies on
+    -- Retail-only APIs (nameplate cast events, UnitShouldDisplaySpellTargetName/
+    -- UnitSpellTargetName, C_Spell.IsSpellImportant).
+    if Cell.isRetail then
+        indicatorSettings["targetedSpellBars"] = {"|cffb7b7b7"..L["Shows one floating bar per tracked enemy cast, with its target's name -- doesn't try to highlight the targeted unit's own frame like \"Targeted Spells\" does. Every cast is shown; the spell list below and \"important\" casts (Blizzard's own flag, mostly Mythic+/raid mechanics) only affect sorting and the color marking, never whether something shows at all."], "enabled", "targetedSpellBarsPreview", "targetedSpellBarsWhere", "targetedSpellBarsSort", "checkbutton:showIcon", "checkbutton2:showTargetText", "num:20", "targetedSpellBarsSize", "orientation", "color-alpha", "targetedSpellBarsImportantColor", "targetedSpellsList", "targetedSpellBarsListInfo"}
+    end
+
 elseif Cell.isCata or Cell.isWrath then
     indicatorSettings = {
         ["nameText"] = {"enabled", "color-class", "textWidth", "checkbutton:showGroupNumber", "vehicleNamePosition", "position", "frameLevel", "font-noOffset"},
@@ -2629,6 +2636,39 @@ local function ShowIndicatorSettings(id)
                     ts:Show()
                     ts:ShowGlowPreview()
                 end
+            end)
+
+        -- targetedSpellBarsWhere
+        elseif currentSetting == "targetedSpellBarsWhere" then
+            w:SetDBValue(indicatorTable["where"] or "both")
+            w:SetFunc(function(value)
+                indicatorTable["where"] = value
+                Cell.Fire("UpdateIndicators", notifiedLayout, indicatorName, "where", value)
+            end)
+
+        -- targetedSpellBarsSort
+        elseif currentSetting == "targetedSpellBarsSort" then
+            w:SetDBValue(indicatorTable["sortMode"] or "startTime")
+            w:SetFunc(function(value)
+                indicatorTable["sortMode"] = value
+                Cell.Fire("UpdateIndicators", notifiedLayout, indicatorName, "sortMode", value)
+            end)
+
+        -- targetedSpellBarsSize
+        elseif currentSetting == "targetedSpellBarsSize" then
+            local size = indicatorTable["size"] or {240, 20}
+            w:SetDBValue(size[1], size[2])
+            w:SetFunc(function(width, height)
+                indicatorTable["size"] = {width, height}
+                Cell.Fire("UpdateIndicators", notifiedLayout, indicatorName, "size", indicatorTable["size"])
+            end)
+
+        -- targetedSpellBarsImportantColor
+        elseif currentSetting == "targetedSpellBarsImportantColor" then
+            w:SetDBValue(indicatorTable["importantColor"] or {1, 0.85, 0.1, 1})
+            w:SetFunc(function(value)
+                indicatorTable["importantColor"] = value
+                Cell.Fire("UpdateIndicators", notifiedLayout, indicatorName, "importantColor", value)
             end)
 
         -- targetedSpellsGlow

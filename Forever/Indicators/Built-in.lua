@@ -1780,6 +1780,11 @@ function I.CreateNameText(parent)
         --     end
         -- end
 
+        -- Forever: "First Surname" (states.surname is UnitName's 2nd return there; on Retail it's
+        -- the realm, and F.WithSurname/F.ForeverShortName are no-ops). Only used as the base/
+        -- fallback name below -- a nickname (from any source above) always wins, unchanged.
+        local baseName = F.ForeverShortName(F.WithSurname(F.BD(parent).states.name, F.BD(parent).states.surname), nameText.nameFormat)
+
         -- only check nickname for players
         if F.BD(parent).states.isPlayer then
             if F.IsValueNonSecret(F.BD(parent).states.name) and CELL_NICKTAG_ENABLED and Cell.NickTag then
@@ -1787,15 +1792,21 @@ function I.CreateNameText(parent)
             end
             if F.IsValueNonSecret(F.BD(parent).states.name) and F.IsValueNonSecret(F.BD(parent).states.fullName) then
                 if F.GetNickname then
-                    name = name or F.GetNickname(F.BD(parent).states.name, F.BD(parent).states.fullName)
+                    -- F.GetNickname's own default body is just "return shortname or fullname" --
+                    -- a plain passthrough, not a real nickname lookup (that's Cell.NickTag above).
+                    -- Feeding it the raw first name here silently discarded the surname/format on
+                    -- EVERY unit whenever no NickTag nickname was set, i.e. always. Feeding it
+                    -- baseName instead keeps this call meaningful if it's ever actually
+                    -- implemented, while making today's passthrough return baseName unchanged.
+                    name = name or F.GetNickname(baseName, F.BD(parent).states.fullName)
                 else
-                    name = name or F.BD(parent).states.name
+                    name = name or baseName
                 end
             else
-                name = F.BD(parent).states.name
+                name = baseName
             end
         else
-            name = F.BD(parent).states.name
+            name = baseName
         end
 
         if Cell.loaded and CellDB["general"]["translit"] and F.IsValueNonSecret(name) and LibTranslit then
@@ -1896,6 +1907,13 @@ function I.CreateNameText(parent)
 
     function nameText:ShowGroupNumber(show)
         nameText.showGroupNumber = show
+        nameText:UpdateName()
+    end
+
+    -- Forever only: "full" (or nil) = First Surname, "first" = First only, "last" = Surname only.
+    -- No-op on Retail (F.ForeverShortName/F.WithSurname pass the name through unchanged there).
+    function nameText:SetNameFormat(mode)
+        nameText.nameFormat = mode
         nameText:UpdateName()
     end
 
@@ -3463,9 +3481,13 @@ function I.CreateMissingBuffs(parent)
         local name = parent:GetName().."MissingBuff"..i
         local frame = I.CreateAura_BarIcon(name, missingBuffs)
         tinsert(missingBuffs, frame)
-        frame:HookScript("OnSizeChanged", function()
-            if LCG then LCG.ButtonGlow_Start(frame) end
-        end)
+        -- No glow (LibCustomGlow's shared overlay pool caused the "secret number, tainted
+        -- by Cell" crash spam) and no border -- just the plain icon, like MissingBuffs
+        -- (clicketz) does it on Retail.
+        frame:SetBackdropColor(0, 0, 0, 0)
+        P.ClearPoints(frame.icon)
+        P.Point(frame.icon, "TOPLEFT", frame, "TOPLEFT", 0, 0)
+        P.Point(frame.icon, "BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
     end
 end
 
@@ -3504,7 +3526,6 @@ local function ShowMissingBuff(b, index, icon)
 
     local f = F.BD(b).indicators.missingBuffs[index]
     f:SetCooldown(0, 0, nil, icon, 0)
-    if LCG then LCG.ButtonGlow_Start(f) end
 end
 
 function I.ShowMissingBuff(unit, icon)

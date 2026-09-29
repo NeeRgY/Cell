@@ -440,9 +440,23 @@ function F.GetClickCastingSpellList(class, spec)
         elseif name then
             seenNames[name] = true
         end
+
+        -- 5th entry = highest known rank, used by the rank submenu (downranking). On Forever this
+        -- comes from an actual player-spellbook scan (F.GetMaxSpellRank), so 0 doesn't just mean
+        -- "no ranks" -- it means the spell isn't in the spellbook at all yet (not learned). The
+        -- list used to include every class spell candidate regardless of level/talents (e.g. a
+        -- level 4 Mage already seeing "Slow Fall", learned much later); exclude those here instead
+        -- of just showing them unrankable.
+        local maxRank
         if name then
-            -- 5th entry = highest known rank, used by the rank submenu (downranking)
-            spells[i] = {icon, name, spellType, spellId, F.GetMaxSpellRank(spellId)}
+            maxRank = F.GetMaxSpellRank(spellId)
+            if Cell.isForever and maxRank == 0 then
+                name = nil
+            end
+        end
+
+        if name then
+            spells[i] = {icon, name, spellType, spellId, maxRank}
         else
             F.Debug("|cffff0000[INVALID]|r click-casting spell:", spellId)
             if not invalid then invalid = {} end

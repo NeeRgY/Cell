@@ -927,6 +927,70 @@ function F.UnitFullName(unit)
     return name
 end
 
+-------------------------------------------------
+-- Forever surname (First/Last name characters)
+-------------------------------------------------
+-- WoW Forever characters carry a surname, which UnitName hands back as its second value (on
+-- Retail that slot is the realm name instead). Two characters can share a first name but differ
+-- by surname -- reading only UnitName's first return (as Cell always used to) makes them show as
+-- the exact same name on the frames, with no way to tell them apart.
+--
+-- F.WithSurname(name, surname): joins "First Surname" the way Blizzard's own frames do, honoring
+-- the player's own "Show My Surname" preference (C_PlayerInfo.ShouldDisplaySurname) for their own
+-- name, and passing a secret name through untouched (can't be inspected or joined). Cached per
+-- name/surname pair so repaints never rebuild the same string twice.
+local withSurnameCache = {}
+function F.WithSurname(name, surname)
+    if not Cell.isForever then return name end
+    if not (type(name) == "string" and type(surname) == "string" and surname ~= "") then return name end
+    if not F.IsValueNonSecret(name) or not F.IsValueNonSecret(surname) then return name end
+
+    local C_PlayerInfo = _G.C_PlayerInfo
+    if C_PlayerInfo and C_PlayerInfo.ShouldDisplaySurname and not C_PlayerInfo.ShouldDisplaySurname() then
+        local myName, mySurname = UnitName("player")
+        if name == myName and surname == mySurname then return name end
+    end
+
+    local row = withSurnameCache[name]
+    if not row then row = {}; withSurnameCache[name] = row end
+    local full = row[surname]
+    if not full then
+        local sep = (Constants and Constants.CharacterNameSeparatorConsts
+            and Constants.CharacterNameSeparatorConsts.CHARACTERNAME_SURNAME_SEPARATOR) or " "
+        local tail = sep..surname
+        -- Some units already carry it in the first value.
+        full = (name:sub(-#tail) == tail) and name or (name..tail)
+        row[surname] = full
+    end
+    return full
+end
+
+-- F.ForeverShortName(name, mode): "first" keeps only the first word, "last" only the last word,
+-- any other mode (or a one-word/secret/non-string name) returns it unchanged. Expects the ALREADY
+-- surname-joined "First Last" string from F.WithSurname. Cached per mode+name.
+local shortNameCache = {["first"] = {}, ["last"] = {}}
+function F.ForeverShortName(name, mode)
+    local cache = shortNameCache[mode]
+    if not cache or type(name) ~= "string" or not F.IsValueNonSecret(name) then return name end
+    local cached = cache[name]
+    if cached then return cached end
+
+    local sep = (Constants and Constants.CharacterNameSeparatorConsts
+        and Constants.CharacterNameSeparatorConsts.CHARACTERNAME_SURNAME_SEPARATOR) or " "
+    local words = (sep ~= " " and sep ~= "") and name:gsub(sep:gsub("%W", "%%%0"), " ") or name
+    local short
+    if mode == "first" then
+        short = words:match("^%s*(%S+)")
+    else
+        short = words:match("(%S+)%s*$")
+    end
+    short = short or name
+
+    if F.Getn(cache) >= 256 then wipe(cache) end
+    cache[name] = short
+    return short
+end
+
 function F.ToShortName(fullName)
     if not fullName then return "" end
     local shortName = strsplit("-", fullName)
@@ -4230,21 +4294,18 @@ function F.IsCooldownRestricted()
 end
 
 function F.IsAuraNonSecret(auraInfo)
-    if not Cell.isMidnight then return true end
     if not issecretvalue then return true end
     return not issecretvalue(auraInfo.spellId)
 end
 
 function F.IsSpellAuraNonSecret(spellId)
-    if not Cell.isMidnight then return true end
     if C_Secrets and C_Secrets.ShouldSpellAuraBeSecret then
         return not C_Secrets.ShouldSpellAuraBeSecret(spellId)
     end
-    return false
+    return true
 end
 
 function F.IsValueNonSecret(val)
-    if not Cell.isMidnight then return true end
     if not issecretvalue then return true end
     return not issecretvalue(val)
 end

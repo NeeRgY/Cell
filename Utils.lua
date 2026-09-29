@@ -4086,21 +4086,18 @@ function F.IsCooldownRestricted()
 end
 
 function F.IsAuraNonSecret(auraInfo)
-    if not Cell.isMidnight then return true end
     if not issecretvalue then return true end
     return not issecretvalue(auraInfo.spellId)
 end
 
 function F.IsSpellAuraNonSecret(spellId)
-    if not Cell.isMidnight then return true end
     if C_Secrets and C_Secrets.ShouldSpellAuraBeSecret then
         return not C_Secrets.ShouldSpellAuraBeSecret(spellId)
     end
-    return false
+    return true
 end
 
 function F.IsValueNonSecret(val)
-    if not Cell.isMidnight then return true end
     if not issecretvalue then return true end
     return not issecretvalue(val)
 end

@@ -2439,6 +2439,41 @@ local function CreateSetting_ColorAlpha(parent)
     return widget
 end
 
+-- Targeted Spell Bars: "important cast" glow color. Same shape as CreateSetting_ColorAlpha
+-- above, kept as its own widget/cache key so the indicator can show two independent color
+-- pickers (bar color via the generic "color-alpha", this one for the important-cast glow).
+local function CreateSetting_TargetedSpellBarsImportantColor(parent)
+    local widget
+
+    if not settingWidgets["targetedSpellBarsImportantColor"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_TargetedSpellBarsImportantColor", parent, 240, 30)
+        settingWidgets["targetedSpellBarsImportantColor"] = widget
+
+        local colorPicker = Cell.CreateColorPicker(widget, L["Important Cast Color"], true, function(r, g, b, a)
+            widget.colorTable[1] = r
+            widget.colorTable[2] = g
+            widget.colorTable[3] = b
+            widget.colorTable[4] = a
+            widget.func(widget.colorTable)
+        end)
+        colorPicker:SetPoint("TOPLEFT", 5, -8)
+
+        function widget:SetFunc(func)
+            widget.func = func
+        end
+
+        function widget:SetDBValue(colorTable)
+            widget.colorTable = colorTable
+            colorPicker:SetColor(colorTable)
+        end
+    else
+        widget = settingWidgets["targetedSpellBarsImportantColor"]
+    end
+
+    widget:Show()
+    return widget
+end
+
 -- Retail-only trimmed "colors" widget: same colorsTable shape (Normal/[2]/[3]/Border/Background)
 -- as CreateSetting_Colors below, but leaves out the two "Remaining Time <" threshold rows
 -- entirely -- the native Retail engine can't safely read a live remaining-time value into Lua
@@ -7583,6 +7618,231 @@ local function CreateSetting_TargetedSpellsDisplayMode(parent)
     return widget
 end
 
+-- Shows one fake test bar and unlocks the floating container for dragging, without needing the
+-- indicator to be enabled first or the user to find the separate Utilities > Raid Tools > Unlock
+-- button. Resets to "off" every time this panel is (re)shown, so leaving the tab always leaves a
+-- clean state instead of an orphaned preview bar.
+local function CreateSetting_TargetedSpellBarsPreview(parent)
+    local widget
+
+    if not settingWidgets["targetedSpellBarsPreview"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_TargetedSpellBarsPreview", parent, 240, 30)
+        settingWidgets["targetedSpellBarsPreview"] = widget
+
+        local btn = Cell.CreateButton(widget, L["Toggle Preview & Unlock"], "accent", {200, 20})
+        btn:SetPoint("TOPLEFT", 5, -5)
+        widget.btn = btn
+
+        btn:SetScript("OnClick", function(self)
+            self.isOn = not self.isOn
+            self:SetText(self.isOn and L["Hide Preview"] or L["Toggle Preview & Unlock"])
+            if I.SetTargetedSpellBarsPreview then
+                I.SetTargetedSpellBarsPreview(self.isOn)
+            end
+        end)
+
+        function widget:SetDBValue()
+            btn.isOn = false
+            btn:SetText(L["Toggle Preview & Unlock"])
+            if I.SetTargetedSpellBarsPreview then
+                I.SetTargetedSpellBarsPreview(false)
+            end
+        end
+        function widget:SetFunc() end
+    else
+        widget = settingWidgets["targetedSpellBarsPreview"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+-- Hover-info icon anchored directly onto the (shared, reused-elsewhere) spell list widget's own
+-- "Spell List" title -- not a separate row of its own, and not touching CreateSetting_Auras
+-- itself (shared with several other indicators' blacklists/lists that don't want this tooltip).
+-- This widget's own frame is just a near-zero-height spacer to keep the settings-panel stacking
+-- loop happy; the actual visible icon is parented to the auras widget so it sits right beside its
+-- title, wherever that title ends up.
+local function CreateSetting_TargetedSpellBarsListInfo(parent)
+    local widget
+
+    if not settingWidgets["targetedSpellBarsListInfo"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_TargetedSpellBarsListInfo", parent, 240, 1)
+        settingWidgets["targetedSpellBarsListInfo"] = widget
+
+        -- "targetedSpellsList" (CreateSetting_Auras(parent, 1)) is always built earlier in the
+        -- same settingsTable pass, so settingWidgets["auras1"] already exists here.
+        local auras1 = settingWidgets["auras1"]
+        local info = Cell.CreateButton(auras1 or widget, nil, "accent-hover", {16, 16})
+        if auras1 and auras1.text then
+            info:SetPoint("LEFT", auras1.text, "RIGHT", 6, 0)
+        else
+            info:SetPoint("TOPLEFT", widget, "TOPLEFT", 5, -2)
+        end
+        info.tex = info:CreateTexture(nil, "ARTWORK")
+        info.tex:SetAllPoints(info)
+        info.tex:SetTexture("Interface\\AddOns\\Cell\\Media\\Icons\\info2.tga")
+        info:SetScript("OnEnter", function()
+            CellTooltip:SetOwner(info, "ANCHOR_NONE")
+            CellTooltip:SetPoint("BOTTOMLEFT", info, "TOPLEFT", 0, 3)
+            CellTooltip:AddLine(L["Spell List"])
+            CellTooltip:AddLine("|cffffffff"..L["Optional. Every cast is shown regardless of this list -- adding a spell here only makes it sort to the front (\"Listed Spells First\"). It doesn't filter anything out."], 1, 1, 1, true)
+            CellTooltip:Show()
+        end)
+        info:SetScript("OnLeave", function()
+            CellTooltip:Hide()
+        end)
+        widget.info = info
+
+        -- info is parented to the SHARED auras1 widget, not to this placeholder, so the
+        -- generic "hide every cached settingWidget" pass in Cell.CreateIndicatorSettings (which
+        -- runs before EVERY panel rebuild, for every indicator) would never reach it on its own --
+        -- it would stay stuck visible on some other indicator's unrelated aura/blacklist list.
+        -- Cascading Hide/Show here keeps it in sync with this placeholder's own visibility.
+        local baseHide, baseShow = widget.Hide, widget.Show
+        function widget:Hide()
+            info:Hide()
+            baseHide(self)
+        end
+        function widget:Show()
+            info:Show()
+            baseShow(self)
+        end
+
+        function widget:SetDBValue() end
+        function widget:SetFunc() end
+    else
+        widget = settingWidgets["targetedSpellBarsListInfo"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+local function CreateSetting_TargetedSpellBarsWhere(parent)
+    local widget
+
+    if not settingWidgets["targetedSpellBarsWhere"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_TargetedSpellBarsWhere", parent, 240, 50)
+        settingWidgets["targetedSpellBarsWhere"] = widget
+
+        widget.dropdown = Cell.CreateDropdown(widget, 245)
+        widget.dropdown:SetPoint("TOPLEFT", 5, -20)
+        widget.dropdown:SetItems({
+            {
+                ["text"] = L["Raid & Party"],
+                ["value"] = "both",
+                ["onClick"] = function() widget.func("both") end,
+            },
+            {
+                ["text"] = L["Raid Only"],
+                ["value"] = "raid",
+                ["onClick"] = function() widget.func("raid") end,
+            },
+            {
+                ["text"] = L["Party Only"],
+                ["value"] = "party",
+                ["onClick"] = function() widget.func("party") end,
+            },
+        })
+
+        widget.label = widget:CreateFontString(nil, "OVERLAY", font_name)
+        widget.label:SetText(L["Show In"])
+        widget.label:SetPoint("BOTTOMLEFT", widget.dropdown, "TOPLEFT", 0, 1)
+
+        function widget:SetFunc(func)
+            widget.func = func
+        end
+
+        function widget:SetDBValue(value)
+            local valid = value == "both" or value == "raid" or value == "party"
+            widget.dropdown:SetSelectedValue(valid and value or "both")
+        end
+    else
+        widget = settingWidgets["targetedSpellBarsWhere"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+local function CreateSetting_TargetedSpellBarsSort(parent)
+    local widget
+
+    if not settingWidgets["targetedSpellBarsSort"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_TargetedSpellBarsSort", parent, 240, 50)
+        settingWidgets["targetedSpellBarsSort"] = widget
+
+        widget.dropdown = Cell.CreateDropdown(widget, 245)
+        widget.dropdown:SetPoint("TOPLEFT", 5, -20)
+        widget.dropdown:SetItems({
+            {
+                ["text"] = L["By Cast Start Time"],
+                ["value"] = "startTime",
+                ["onClick"] = function() widget.func("startTime") end,
+            },
+            {
+                ["text"] = L["Listed Spells First"],
+                ["value"] = "listOrder",
+                ["onClick"] = function() widget.func("listOrder") end,
+            },
+        })
+
+        widget.label = widget:CreateFontString(nil, "OVERLAY", font_name)
+        widget.label:SetText(L["Sort By"])
+        widget.label:SetPoint("BOTTOMLEFT", widget.dropdown, "TOPLEFT", 0, 1)
+
+        function widget:SetFunc(func)
+            widget.func = func
+        end
+
+        function widget:SetDBValue(value)
+            local valid = value == "startTime" or value == "listOrder"
+            widget.dropdown:SetSelectedValue(valid and value or "startTime")
+        end
+    else
+        widget = settingWidgets["targetedSpellBarsSort"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+local function CreateSetting_TargetedSpellBarsSize(parent)
+    local widget
+
+    if not settingWidgets["targetedSpellBarsSize"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_TargetedSpellBarsSize", parent, 240, 50)
+        settingWidgets["targetedSpellBarsSize"] = widget
+
+        widget.width = Cell.CreateSlider(L["Width"], widget, 100, 400, 100, 1)
+        widget.width:SetPoint("TOPLEFT", 5, -20)
+        widget.height = Cell.CreateSlider(L["Height"], widget, 12, 50, 100, 1)
+        widget.height:SetPoint("TOPLEFT", widget.width, "TOPRIGHT", 25, 0)
+
+        widget.width.afterValueChangedFn = function(value)
+            widget.func(value, widget.height:GetValue())
+        end
+        widget.height.afterValueChangedFn = function(value)
+            widget.func(widget.width:GetValue(), value)
+        end
+
+        function widget:SetFunc(func)
+            widget.func = func
+        end
+
+        function widget:SetDBValue(w, h)
+            widget.width:SetValue(w or 240)
+            widget.height:SetValue(h or 20)
+        end
+    else
+        widget = settingWidgets["targetedSpellBarsSize"]
+    end
+
+    widget:Show()
+    return widget
+end
+
 local CLASS_ROLES = {
     ["DEATHKNIGHT"] = {"TANK", "DAMAGER"},
     ["DEMONHUNTER"] = {"TANK", "DAMAGER"},
@@ -8584,6 +8844,12 @@ local builders = {
     ["iconStyle"] = CreateSetting_IconStyle,
     ["animationStyle"] = CreateSetting_AnimationStyle,
     ["targetedSpellsDisplayMode"] = CreateSetting_TargetedSpellsDisplayMode,
+    ["targetedSpellBarsPreview"] = CreateSetting_TargetedSpellBarsPreview,
+    ["targetedSpellBarsListInfo"] = CreateSetting_TargetedSpellBarsListInfo,
+    ["targetedSpellBarsWhere"] = CreateSetting_TargetedSpellBarsWhere,
+    ["targetedSpellBarsSort"] = CreateSetting_TargetedSpellBarsSort,
+    ["targetedSpellBarsSize"] = CreateSetting_TargetedSpellBarsSize,
+    ["targetedSpellBarsImportantColor"] = CreateSetting_TargetedSpellBarsImportantColor,
     ["powerTextFilters"] = CreateSetting_RoleFilters,
 }
 

@@ -3930,6 +3930,37 @@ function F.Revise()
         end
     end
 
+    -- One-time: insert the new "Targeted Spell Bars" indicator (index 28, right after
+    -- "Targeted Spells") into every existing layout, Retail only. dbRevision can't gate this --
+    -- Cell.version/GetRevisionNumber only reads the first digit-run ("277") out of the r277.x.x
+    -- version string, so it's frozen at 277 for this whole release line (see the "277.9.8.9"
+    -- Forever-side one-time-flag notes for the same reasoning); a dedicated flag is used instead.
+    if Cell.isRetail and not CellDB["addedTargetedSpellBars"] then
+        CellDB["addedTargetedSpellBars"] = true
+        local index = Cell.defaults.indicatorIndices.targetedSpellBars
+        for _, layout in pairs(CellDB["layouts"]) do
+            if type(layout["indicators"]) == "table"
+                and (not layout["indicators"][index] or layout["indicators"][index]["indicatorName"] ~= "targetedSpellBars") then
+                tinsert(layout.indicators, index, {
+                    ["name"] = "Targeted Spell Bars",
+                    ["indicatorName"] = "targetedSpellBars",
+                    ["type"] = "built-in",
+                    ["enabled"] = false,
+                    ["where"] = "both",
+                    ["sortMode"] = "startTime",
+                    ["showIcon"] = true,
+                    ["showTargetText"] = true,
+                    ["showSpellName"] = true,
+                    ["num"] = 5,
+                    ["size"] = {240, 20},
+                    ["orientation"] = "top-to-bottom",
+                    ["color"] = {0.70, 0.40, 0.90, 1},
+                    ["importantColor"] = {1, 0.85, 0.1, 1},
+                })
+            end
+        end
+    end
+
     CellDB["revise"] = Cell.version
     if CellCharacterDB then
         CellCharacterDB["revise"] = Cell.version

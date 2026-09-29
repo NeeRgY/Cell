@@ -269,7 +269,11 @@ local externals = { -- true: track by name, false: track by id
         [740] = { -- 宁静 - Tranquility
             [157982] = true,
             [1264623] = true,
+            [8918] = true, -- Vanilla rank 2
+            [9862] = true, -- Vanilla rank 3
+            [9863] = true, -- Vanilla rank 4
         },
+        [29166] = true, -- Innervate
     },
 
     ["EVOKER"] = {
@@ -305,6 +309,8 @@ local externals = { -- true: track by name, false: track by id
     ["PALADIN"] = {
         [1022] = { -- 保护祝福 - Blessing of Protection
             [1309794] = true,
+            [5599] = true, -- Blessing of Protection (Vanilla rank 2)
+            [10278] = true, -- Blessing of Protection (Vanilla rank 3)
         },
         [6940] = true, -- 牺牲祝福 - Blessing of Sacrifice
         [204018] = true, -- 破咒祝福 - Blessing of Spellwarding
@@ -338,6 +344,7 @@ local externals = { -- true: track by name, false: track by id
         [200183] = true, -- 神圣化身 - Apotheosis
         [15286] = true, -- 吸血鬼的拥抱 - Vampiric Embrace
         [421453] = true, -- Ultimate Penitence
+        [6346] = true, -- Fear Ward
     },
 
     ["SHAMAN"] = {
@@ -490,15 +497,21 @@ local defensives = { -- true: track by name, false: track by id
         [186265] = true, -- 灵龟守护 - Aspect of the Turtle
         [264735] = true, -- 优胜劣汰 - Survival of the Fittest
         [109304] = true, -- 意气风发 - Exhilaration
+        [19263] = true, -- Deterrence
     },
 
     ["MAGE"] = {
         [45438] = true, -- 寒冰屏障 - Ice Block
+        [11958] = true, -- Ice Block (Vanilla)
         [414658] = { -- 深寒凝冰 - Ice Cold
             [414659] = true,
         },
         [342246] = true, -- 操控时间 - Alter Time
-        [11426] = true, -- 寒冰护体 - Ice Barrier
+        [13031] = { -- Ice Barrier (Vanilla rank 2, primary)
+            [11426] = true, -- Ice Barrier (Vanilla rank 1)
+            [13032] = true, -- Ice Barrier (Vanilla rank 3)
+            [13033] = true, -- Ice Barrier (Vanilla rank 4)
+        },
         [235313] = true, -- 烈焰护体 - Blazing Barrier
         [235450] = true, -- 棱光护体 - Prismatic Barrier
         [66] = true, -- 隐形术 - Invisibility
@@ -506,6 +519,13 @@ local defensives = { -- true: track by name, false: track by id
             [113862] = true,
         },
         [55342] = true, -- 镜像 - Mirror Image
+        [1463] = { -- Mana Shield (Vanilla)
+            [8494] = true,
+            [8495] = true,
+            [10191] = true,
+            [10192] = true,
+            [10193] = true,
+        },
     },
 
     ["MONK"] = {
@@ -525,9 +545,13 @@ local defensives = { -- true: track by name, false: track by id
     },
 
     ["PALADIN"] = {
-        [498] = true, -- 圣佑术 - Divine Protection
+        [498] = { -- 圣佑术 - Divine Protection
+            [5573] = true, -- Divine Protection (Vanilla rank 2)
+        },
         [403876] = true, -- Divine Protection
-        [642] = true, -- 圣盾术 - Divine Shield
+        [642] = { -- 圣盾术 - Divine Shield
+            [1020] = true, -- Divine Shield (Vanilla rank 2)
+        },
         [184662] = true, -- 复仇之盾 - Shield of Vengeance
         [31850] = true, -- 炽热防御者 - Ardent Defender
         [86659] = { -- 远古列王守卫 - Guardian of Ancient Kings
@@ -543,7 +567,13 @@ local defensives = { -- true: track by name, false: track by id
     ["PRIEST"] = {
         [47585] = true, -- 消散 - Dispersion
         [19236] = true, -- 绝望祷言 - Desperate Prayer
-        [586] = true, -- 渐隐术 -- TODO: 373446 通透影像 - Fade
+        [586] = { -- 渐隐术 -- TODO: 373446 通透影像 - Fade
+            [9578] = true, -- Fade (Vanilla rank 2)
+            [9579] = true, -- Fade (Vanilla rank 3)
+            [9592] = true, -- Fade (Vanilla rank 4)
+            [10941] = true, -- Fade (Vanilla rank 5)
+            [10942] = true, -- Fade (Vanilla rank 6)
+        },
         [193065] = true, -- 防护圣光 - Protective Light
         [114216] = { -- Angelic Bulwark
             [114214] = true,
@@ -551,6 +581,7 @@ local defensives = { -- true: track by name, false: track by id
         [45242] = { -- Focused Will
             [426401] = true,
         },
+        [27827] = true, -- Spirit of Redemption
     },
 
     ["ROGUE"] = {
@@ -558,6 +589,11 @@ local defensives = { -- true: track by name, false: track by id
         [5277] = true, -- 闪避 - Evasion
         [31224] = false, -- 暗影斗篷 - Cloak of Shadows
         [185311] = true, -- 猩红之瓶 - Crimson Vial
+        [1856] = { -- Vanish
+            [1857] = true, -- Vanish (Vanilla rank 2)
+            [11327] = true, -- Vanish (buff aura)
+            [11329] = true, -- Vanish (buff aura)
+        },
     },
 
     ["SHAMAN"] = {
@@ -571,6 +607,11 @@ local defensives = { -- true: track by name, false: track by id
         [108416] = true, -- 黑暗契约 - Dark Pact
         [387847] = true, -- 邪甲术 - Fel Armor
         [108366] = true, -- 灵魂榨取 - Soul Leech
+        [6229] = { -- Shadow Ward
+            [11739] = true, -- Shadow Ward (Vanilla rank 2)
+            [11740] = true, -- Shadow Ward (Vanilla rank 3)
+            [28610] = true, -- Shadow Ward (Vanilla rank 4)
+        },
     },
 
     ["WARRIOR"] = {
@@ -583,7 +624,10 @@ local defensives = { -- true: track by name, false: track by id
             [1277297] = true,
         },
         [871] = true, -- 盾墙 - Shield Wall
-        [12975] = true, -- 破釜沉舟 - Last Stand
+        [12975] = { -- 破釜沉舟 - Last Stand
+            [12976] = true, -- Last Stand (Vanilla rank 2)
+        },
+        [20230] = true, -- Retaliation
         [3411] = { -- 援护 - Intervene
             [147833] = true,
         },
@@ -1102,7 +1146,25 @@ end
 local spells =  {
     -- druid
     8936, -- 愈合 - Regrowth
+    8938, -- Regrowth (Vanilla rank 5, primary)
+    8939, -- Regrowth (Vanilla rank 6)
+    8940, -- Regrowth (Vanilla rank 7)
+    8941, -- Regrowth (Vanilla rank 8)
+    9750, -- Regrowth (Vanilla rank 9)
+    9856, -- Regrowth (Vanilla rank 10)
+    9857, -- Regrowth (Vanilla rank 11)
+    9858, -- Regrowth (Vanilla rank 12)
     774, -- 回春术 - Rejuvenation
+    1058, -- Rejuvenation (Vanilla rank 2)
+    1430, -- Rejuvenation (Vanilla rank 3)
+    2090, -- Rejuvenation (Vanilla rank 4)
+    2091, -- Rejuvenation (Vanilla rank 5)
+    3627, -- Rejuvenation (Vanilla rank 6)
+    8910, -- Rejuvenation (Vanilla rank 7)
+    9839, -- Rejuvenation (Vanilla rank 8)
+    9840, -- Rejuvenation (Vanilla rank 9)
+    9841, -- Rejuvenation (Vanilla rank 10)
+    25299, -- Rejuvenation (Vanilla rank 11)
     155777, -- 回春术（萌芽） - Rejuvenation (Germination)
     33763, -- 生命绽放 - Lifebloom
     188550, -- 生命绽放 - Lifebloom
@@ -1176,9 +1238,27 @@ local spells =  {
 
     -- priest
     139, -- 恢复 - Renew (removed in 12.0)
+    6074, -- Renew (Vanilla rank 2, primary)
+    6075, -- Renew (Vanilla rank 3)
+    6076, -- Renew (Vanilla rank 4)
+    6077, -- Renew (Vanilla rank 5)
+    6078, -- Renew (Vanilla rank 6)
+    10927, -- Renew (Vanilla rank 7)
+    10928, -- Renew (Vanilla rank 8)
+    10929, -- Renew (Vanilla rank 9)
+    25315, -- Renew (Vanilla rank 10)
     200829, -- 恳求 - Plea (added in 12.0, Disc)
     41635, -- 愈合祷言 - Prayer of Mending
     17, -- 真言术：盾 - Power Word: Shield
+    592, -- Power Word: Shield (Vanilla rank 2, primary)
+    600, -- Power Word: Shield (Vanilla rank 3)
+    3747, -- Power Word: Shield (Vanilla rank 4)
+    6065, -- Power Word: Shield (Vanilla rank 5)
+    6066, -- Power Word: Shield (Vanilla rank 6)
+    10898, -- Power Word: Shield (Vanilla rank 7)
+    10899, -- Power Word: Shield (Vanilla rank 8)
+    10900, -- Power Word: Shield (Vanilla rank 9)
+    10901, -- Power Word: Shield (Vanilla rank 10)
     194384, -- 救赎 - Atonement
     77489, -- 圣光回响 - Echo of Light
     372847, -- 光明之泉恢复 - Blessed Bolt
@@ -1188,7 +1268,9 @@ local spells =  {
     453846, -- Resonant Energy
 
     -- shaman
-    974, -- 大地之盾 - Earth Shield
+    974, -- 大地之盾 - Earth Shield (Rank 1)
+    32593, -- Earth Shield (Rank 2)
+    32594, -- Earth Shield (Rank 3)
     383648, -- 大地之盾（天赋） - Earth Shield
     61295, -- 激流 - Riptide
     382024, -- 大地生命武器 - Earthliving Weapon

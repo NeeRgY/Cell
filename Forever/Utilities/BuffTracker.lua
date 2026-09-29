@@ -41,7 +41,79 @@ local buffSpellIdAliases = {
     movement = {381741, 381748, 381751}, -- Blessing of the Bronze variants
 }
 
-if Cell.isRetail then
+if Cell.isForever then
+    -- WoW Forever serves Vanilla-era content, but WOW_PROJECT_ID misreports as Mainline
+    -- (Cell.isRetail is true here too, see Utils.lua) -- so this branch has to run BEFORE
+    -- the Retail one below, or Forever would silently fall into it. That table uses
+    -- categories/spells that don't exist in Vanilla at all (Mastery and Versatility
+    -- aren't Vanilla stats, Evoker doesn't exist, Skyfury/Blessing of the Bronze aren't
+    -- Vanilla spells), plus the modern merged Power Word: Fortitude id (21562) instead
+    -- of the Vanilla rank 1 id actually castable here (1243). Shaman has no single-target
+    -- personal raid buff in Vanilla (their contribution is totems, which don't fit this
+    -- "did I get person X's buff" model), so there's no 4th/5th category for them either.
+    buffs = {
+        stamina = {
+            tag = ITEM_MOD_STAMINA_SHORT, -- Stamina
+            icon = 135987,
+            order = 1,
+            provider = {
+                PRIEST = {id = 1243, level = 4}, -- Power Word: Fortitude (Vanilla rank 1)
+            }
+        },
+        stats = {
+            tag = RAID_BUFF_1, -- Stats
+            icon = 136078,
+            order = 2,
+            provider = {
+                DRUID = {id = 1126, level = 4}, -- Mark of the Wild (Vanilla rank 1, learned at 4, not Retail's 8/9)
+            }
+        },
+        intellect = {
+            tag = ITEM_MOD_INTELLECT_SHORT, -- Intellect
+            icon = 135932,
+            order = 3,
+            provider = {
+                MAGE = {id = 1459, level = 4}, -- Arcane Intellect (Vanilla rank 1, learned at 4, not Retail's 8)
+            }
+        },
+        attackPower = {
+            tag = RAID_BUFF_3, -- Attack Power
+            icon = 132333,
+            order = 4,
+            provider = {
+                WARRIOR = {id = 6673, level = 10}, -- Battle Shout (Vanilla rank 1)
+            }
+        },
+    }
+
+    -- Forever has no specialization system (GetSpecialization is shimmed to return nil,
+    -- see Utils.lua), so LGI:GetCachedInfo(...).specId is never populated here -- spec-based
+    -- routing below would never match anything. requiredByEveryone alone covers all 4
+    -- Vanilla raid buffs, same as it does on the Retail/Mists branches below.
+    requiredBuffs = {}
+
+    requiredByEveryone = {
+        stamina = true,
+        stats = true,
+        intellect = true,
+        attackPower = true,
+    }
+
+    available = {
+        stamina = false,
+        stats = false,
+        intellect = false,
+        attackPower = false,
+    }
+
+    unaffected = {
+        stamina = {},
+        stats = {},
+        intellect = {},
+        attackPower = {},
+    }
+
+elseif Cell.isRetail then
     buffs = {
         stamina = {
             tag = ITEM_MOD_STAMINA_SHORT, -- Stamina
@@ -313,7 +385,13 @@ do
 
     local function Insert(class, buffKey, name, icon)
         tinsert(buffs[buffKey]["names"], name)
-        if myClass == class and myLevel >= classBuffs[class][buffKey] then
+        -- Only set on the FIRST match (the primary spell id, always processed before
+        -- buffSpellIdAliases below): ids is [primary, ...aliases], and this used to
+        -- overwrite buffsProvidedByMe on every valid id, so if an alias resolved to
+        -- some other spell name Blizzard's spell database happens to have under that
+        -- id (even one never actually castable in this content phase), the wrong icon
+        -- would win over the actual primary buff icon.
+        if not buffsProvidedByMe[buffKey] and myClass == class and myLevel >= classBuffs[class][buffKey] then
             buffsProvidedByMe[buffKey] = {name, icon}
         end
     end
@@ -887,7 +965,10 @@ local function StartAuraPoll()
     if auraPoll then return end
     if not (F.IsLiveAuraScanBlocked and F.IsLiveAuraScanBlocked()) then return end
     auraPoll = C_Timer.NewTicker(1, function()
-        if enabled and IsInGroup() then
+        -- No IsInGroup() requirement: solo play still wants to see your own missing
+        -- buffs (e.g. a Mage checking their own Arcane Intellect is up), and
+        -- F.IterateGroupMembers() already yields "player" alone when not grouped.
+        if enabled then
             IterateAllUnits()
         else
             StopAuraPoll()
@@ -897,32 +978,27 @@ end
 
 function buffTrackerFrame:GROUP_ROSTER_UPDATE(immediate)
     if timer then timer:Cancel() end
+    -- Previously gated the whole update (and even the player's own buff check) behind
+    -- IsInGroup() -- so a solo player never got a missing-buff indicator for their own
+    -- unit at all, even though F.IterateGroupMembers()/IterateAllUnits() already handle
+    -- a group of just "player" correctly. Only READY_CHECK is genuinely group-only; the
+    -- rest works solo too.
     if IsInGroup() then
         buffTrackerFrame:RegisterEvent("READY_CHECK")
-        buffTrackerFrame:RegisterEvent("UNIT_FLAGS")
-        buffTrackerFrame:RegisterEvent("PLAYER_UNGHOST")
-        if F.IsLiveAuraScanBlocked and F.IsLiveAuraScanBlocked() then
-            buffTrackerFrame:UnregisterEvent("UNIT_AURA")
-            StartAuraPoll()
-        else
-            StopAuraPoll()
-            buffTrackerFrame:RegisterEvent("UNIT_AURA")
-        end
-        buffTrackerFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
-        buffTrackerFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
+    else
+        buffTrackerFrame:UnregisterEvent("READY_CHECK")
+    end
+    buffTrackerFrame:RegisterEvent("UNIT_FLAGS")
+    buffTrackerFrame:RegisterEvent("PLAYER_UNGHOST")
+    if F.IsLiveAuraScanBlocked and F.IsLiveAuraScanBlocked() then
+        buffTrackerFrame:UnregisterEvent("UNIT_AURA")
+        StartAuraPoll()
     else
         StopAuraPoll()
-        buffTrackerFrame:UnregisterEvent("READY_CHECK")
-        buffTrackerFrame:UnregisterEvent("UNIT_FLAGS")
-        buffTrackerFrame:UnregisterEvent("PLAYER_UNGHOST")
-        buffTrackerFrame:UnregisterEvent("UNIT_AURA")
-        buffTrackerFrame:UnregisterEvent("PLAYER_REGEN_DISABLED")
-        buffTrackerFrame:UnregisterEvent("PLAYER_REGEN_ENABLED")
-
-        Reset()
-        RepointButtons()
-        return
+        buffTrackerFrame:RegisterEvent("UNIT_AURA")
     end
+    buffTrackerFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
+    buffTrackerFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
 
     if immediate then
         IterateAllUnits()

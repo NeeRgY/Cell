@@ -278,7 +278,7 @@ local function InitIndicator(indicatorName)
     if indicator.init then return end
 
     if indicatorName == "nameText" then
-        F.BD(previewButton).states.name = UnitName("player")
+        F.BD(previewButton).states.name, F.BD(previewButton).states.surname = UnitName("player")
         F.BD(previewButton).states.isPlayer = true
         indicator.isPreview = true
         indicator:UpdateName()
@@ -974,6 +974,10 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
                 if type(t["showGroupNumber"]) == "boolean" then
                     indicator:ShowGroupNumber(t["showGroupNumber"])
                 end
+                -- update nameFormat (Forever: Full / First Only / Last Only)
+                if t["nameFormat"] and indicator.SetNameFormat then
+                    indicator:SetNameFormat(t["nameFormat"])
+                end
                 -- update vehicleNamePosition
                 if t["vehicleNamePosition"] then
                     indicator:UpdateVehicleNamePosition(t["vehicleNamePosition"])
@@ -1177,6 +1181,10 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
             indicator:SetSpacing(value)
         elseif setting == "orientation" then
             indicator:SetOrientation(value)
+        elseif setting == "nameFormat" then
+            if indicator.SetNameFormat then
+                indicator:SetNameFormat(value)
+            end
         elseif setting == "privateAuraOrientation" then
             indicator:SetOrientation(value)
         elseif setting == "font" then
@@ -1992,7 +2000,7 @@ local midnightDurationFont = "font2:durationFont"
 local midnightDurationVisibility = Cell.isMidnight and "durationVisibilitySimple" or "durationVisibility"
 if Cell.isRetail or Cell.isMists then
     indicatorSettings = {
-        ["nameText"] = {"enabled", "color-class", "textWidth", "checkbutton:showGroupNumber", "vehicleNamePosition", "position", "frameLevel", "font-noOffset"},
+        ["nameText"] = {"enabled", "color-class", "textWidth", "checkbutton:showGroupNumber", "nameFormat", "vehicleNamePosition", "position", "frameLevel", "font-noOffset"},
         ["statusText"] = {"enabled", "checkbutton:showTimer", "checkbutton2:showBackground", "statusColors", "statusPosition", "frameLevel", "font-noOffset"},
         ["healthText"] = {"|cffff7727"..L["MODERATE CPU USAGE"], "enabled", "healthFormat", "position", "frameLevel", "font-noOffset"},
         ["powerText"] = {"enabled", "color-power", "powerFormat", "powerTextFilters", "position", "frameLevel", "font-noOffset"},
@@ -2057,6 +2065,7 @@ if Cell.isRetail or Cell.isMists then
         ["actions"] = {"|cffb7b7b7"..L["Play animation when the unit uses a specific spell/item. The list is global shared, not layout-specific."], "enabled", "actionsPreview", "actionsList"},
         ["healthThresholds"] = {"enabled", "thresholds", "thickness"},
         ["missingBuffs"] = {"|cffb7b7b7"..(L["%s in Utilities must be enabled to make this indicator work."]:format(Cell.GetAccentColorString()..L["Buff Tracker"].."|r")), "enabled", "size-square", "orientation", "position", "frameLevel"},
+        ["targetedSpellBars"] = {"|cffb7b7b7"..L["Shows one floating bar per tracked enemy cast, with its target's name -- doesn't try to highlight the targeted unit's own frame like \"Targeted Spells\" does. Every cast is shown; the spell list below and \"important\" casts (Blizzard's own flag, mostly Mythic+/raid mechanics) only affect sorting and the color marking, never whether something shows at all."], "enabled", "targetedSpellBarsPreview", "targetedSpellBarsWhere", "targetedSpellBarsSort", "checkbutton:showIcon", "checkbutton2:showTargetText", "num:20", "targetedSpellBarsSize", "orientation", "color-alpha", "targetedSpellBarsImportantColor", "targetedSpellsList", "targetedSpellBarsListInfo"},
     }
 
     if Cell.isMists then
@@ -2643,6 +2652,39 @@ local function ShowIndicatorSettings(id)
                 end
             end)
 
+        -- targetedSpellBarsWhere
+        elseif currentSetting == "targetedSpellBarsWhere" then
+            w:SetDBValue(indicatorTable["where"] or "both")
+            w:SetFunc(function(value)
+                indicatorTable["where"] = value
+                Cell.Fire("UpdateIndicators", notifiedLayout, indicatorName, "where", value)
+            end)
+
+        -- targetedSpellBarsSort
+        elseif currentSetting == "targetedSpellBarsSort" then
+            w:SetDBValue(indicatorTable["sortMode"] or "startTime")
+            w:SetFunc(function(value)
+                indicatorTable["sortMode"] = value
+                Cell.Fire("UpdateIndicators", notifiedLayout, indicatorName, "sortMode", value)
+            end)
+
+        -- targetedSpellBarsSize
+        elseif currentSetting == "targetedSpellBarsSize" then
+            local size = indicatorTable["size"] or {240, 20}
+            w:SetDBValue(size[1], size[2])
+            w:SetFunc(function(width, height)
+                indicatorTable["size"] = {width, height}
+                Cell.Fire("UpdateIndicators", notifiedLayout, indicatorName, "size", indicatorTable["size"])
+            end)
+
+        -- targetedSpellBarsImportantColor
+        elseif currentSetting == "targetedSpellBarsImportantColor" then
+            w:SetDBValue(indicatorTable["importantColor"] or {1, 0.85, 0.1, 1})
+            w:SetFunc(function(value)
+                indicatorTable["importantColor"] = value
+                Cell.Fire("UpdateIndicators", notifiedLayout, indicatorName, "importantColor", value)
+            end)
+
         -- targetedSpellsGlow
         elseif currentSetting == "targetedSpellsGlow" then
             w:SetDBValue(CellDB["targetedSpellsGlow"])
@@ -2812,6 +2854,14 @@ local function ShowIndicatorSettings(id)
             w:SetFunc(function(value)
                 indicatorTable["orientation"] = value
                 Cell.Fire("UpdateIndicators", notifiedLayout, indicatorName, "orientation", value)
+            end)
+
+        -- nameFormat (Forever only: Full / First Only / Last Only)
+        elseif currentSetting == "nameFormat" then
+            w:SetDBValue(indicatorTable["nameFormat"] or "full")
+            w:SetFunc(function(value)
+                indicatorTable["nameFormat"] = value
+                Cell.Fire("UpdateIndicators", notifiedLayout, indicatorName, "nameFormat", value)
             end)
 
         -- privateAuraOrientation: read con fallback a orientation (legacy layouts)

@@ -420,6 +420,12 @@ local function ResetIndicators()
             end
             I.EnableTargetedSpells(t["enabled"])
 
+        -- update targetedSpellBars
+        elseif t["indicatorName"] == "targetedSpellBars" then
+            if I.EnableTargetedSpellBars then
+                I.EnableTargetedSpellBars(t["enabled"])
+            end
+
         -- update actions
         elseif t["indicatorName"] == "actions" then
             I.EnableActions(t["enabled"])
@@ -6430,6 +6436,7 @@ function CellUnitButton_OnLoad(button)
     I.CreateRaidDebuffs(button)
     I.CreatePrivateAuras(button)
     I.CreateTargetedSpells(button)
+    I.CreateTargetedSpellBars(button)
     I.CreateTargetCounter(button)
     I.CreateCrowdControls(button)
     I.CreateActions(button)

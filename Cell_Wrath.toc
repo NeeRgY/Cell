@@ -1,6 +1,6 @@
 ## Interface: 38001
 ## Title: Cell
-## Version: r277.9.8.9
+## Version: r277.9.9
 ## Author: enderneko, Krysio, NeRgY
 ## X-Flavor: Wrath
 ## SavedVariables: CellDB, CellDBBackup

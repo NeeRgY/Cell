@@ -167,6 +167,18 @@ select(2, ...).L = setmetatable({
     ["CHANGELOGS"] = [[
 
 
+        <h1>r277.9.9-forever - NeRgY</h1>
+        <h2>WoW Forever</h2>
+        <p>* Defensives, Externals and "Healers" now recognize every Vanilla rank of their tracked spells, not just one, and a few missing spells were added.</p>
+        <p>* Fixed a Lua error spamming every second, and Missing Buffs not disappearing, when Buff Tracker and Missing Buffs were both enabled.</p>
+        <p>* Missing Buffs no longer glows or shows a border, just the plain icon.</p>
+        <p>* Buff Tracker (and Missing Buffs) now also works while playing solo.</p>
+        <p>* Buff Tracker's raid buff list now uses proper Vanilla spells instead of leftover Retail data.</p>
+        <p>* Name Text can now show your character's surname ("Name Format": Full / First / Surname only) -- helps tell apart two players who share a first name.</p>
+        <p>* Click Casting's spell suggestions no longer include spells you haven't learned yet.</p>
+        <p>+ New indicator: "Targeted Spell Bars". Shows one floating, movable bar per tracked enemy cast, with the caster's icon, spell name, a class-colored target name and a countdown -- without trying to guess which raid/party frame to highlight like the old "Targeted Spells" indicator does. Fully configurable: where to show it (raid/party/both), sort order, icon/target-text toggles, max bars, size, colors, an important-cast color, and an optional spell list to sort specific casts to the front. Off by default.</p>
+        <br/>
+
         <h1>r277.9.8.9-forever - NeRgY</h1>
         <h2>WoW Forever</h2>
         <p>* Highlight Debuffs: the "Non-Player Auras", "Important", "Boss Debuffs" and "Role Debuffs" filters can now also be negated (click a checked one again) to show the opposite instead.</p>

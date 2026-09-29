@@ -1,6 +1,6 @@
 ## Interface: 16001
 ## Title: Cell
-## Version: r277.9.8.9-forever
+## Version: r277.9.9-forever
 ## Author: enderneko, Krysio, NeRgY
 ## SavedVariables: CellDB, CellDBBackup
 ## LoadSavedVariablesFirst: 1
@@ -61,6 +61,7 @@ Forever\Indicators\StatusIcon.lua
 Forever\Indicators\AoEHealing.lua
 Forever\Indicators\TargetCounter.lua
 Forever\Indicators\TargetedSpells.lua
+Forever\Indicators\TargetedSpellBars.lua
 Forever\Indicators\Actions.lua
 Forever\Indicators\Custom.lua
 Forever\Indicators\Supporter.lua

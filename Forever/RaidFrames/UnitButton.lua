@@ -420,6 +420,12 @@ local function ResetIndicators()
             end
             I.EnableTargetedSpells(t["enabled"])
 
+        -- update targetedSpellBars
+        elseif t["indicatorName"] == "targetedSpellBars" then
+            if I.EnableTargetedSpellBars then
+                I.EnableTargetedSpellBars(t["enabled"])
+            end
+
         -- update actions
         elseif t["indicatorName"] == "actions" then
             I.EnableActions(t["enabled"])
@@ -634,6 +640,10 @@ local function HandleIndicators(b)
         -- update groupNumber
         if type(t["showGroupNumber"]) == "boolean" then
             indicator:ShowGroupNumber(t["showGroupNumber"])
+        end
+        -- update nameFormat (Forever: Full / First Only / Last Only)
+        if t["nameFormat"] and indicator.SetNameFormat then
+            indicator:SetNameFormat(t["nameFormat"])
         end
         -- update vehicleNamePosition
         if t["vehicleNamePosition"] then
@@ -1000,6 +1010,12 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
                 F.IterateAllUnitButtons(function(b)
                     if value then
                         BD(b).indicators[indicatorName]:Show()
+                        -- Show() alone never repaints the text -- it was last set (or never
+                        -- set) whenever this ran before being hidden, so re-enabling could
+                        -- show nothing until the next unrelated event happened to touch it.
+                        -- B.UpdateName resolves to UnitButton_UpdateName once the whole file
+                        -- has loaded (assigned further down, called here at runtime only).
+                        if B.UpdateName then B.UpdateName(b) end
                     else
                         BD(b).indicators[indicatorName]:Hide()
                     end
@@ -1175,6 +1191,18 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
             F.IterateAllUnitButtons(function(b)
                 local indicator = BD(b).indicators[indicatorName]
                 indicator:SetOrientation(value)
+            end, true)
+        elseif setting == "nameFormat" then
+            F.IterateAllUnitButtons(function(b)
+                local indicator = BD(b).indicators[indicatorName]
+                if indicator.SetNameFormat then
+                    indicator:SetNameFormat(value)
+                end
+                -- SetNameFormat's own UpdateName() re-reads states.name/surname from the LAST
+                -- UnitButton_UpdateName pass -- fine for a plain format switch, but this also
+                -- guards against ever falling out of sync (same reasoning as the nameText
+                -- "enabled" toggle fix above).
+                if B.UpdateName then B.UpdateName(b) end
             end, true)
         elseif setting == "font" then
             F.IterateAllUnitButtons(function(b)
@@ -4103,7 +4131,7 @@ local function UnitButton_UpdateName(self)
     local unit = BD(self).states.unit
     if not unit then return end
 
-    BD(self).states.name = UnitName(unit)
+    BD(self).states.name, BD(self).states.surname = UnitName(unit)
     BD(self).states.fullName = F.UnitFullName(unit)
     local resolvedClass = F.ResolveUnitClassFile(unit, BD(self).states.class)
     if resolvedClass then
@@ -6430,6 +6458,7 @@ function CellUnitButton_OnLoad(button)
     I.CreateRaidDebuffs(button)
     I.CreatePrivateAuras(button)
     I.CreateTargetedSpells(button)
+    I.CreateTargetedSpellBars(button)
     I.CreateTargetCounter(button)
     I.CreateCrowdControls(button)
     I.CreateActions(button)

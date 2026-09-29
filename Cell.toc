@@ -1,6 +1,6 @@
 ## Interface: 120100, 120105
 ## Title: Cell
-## Version: r277.9.8.9
+## Version: r277.9.9
 ## Author: enderneko, Krysio, NeRgY
 ## X-Flavor: Mainline
 ## SavedVariables: CellDB, CellDBBackup
@@ -61,6 +61,7 @@ Indicators\StatusIcon.lua
 Indicators\AoEHealing.lua
 Indicators\TargetCounter.lua
 Indicators\TargetedSpells.lua
+Indicators\TargetedSpellBars.lua
 Indicators\Actions.lua
 Indicators\Custom.lua
 Indicators\Supporter.lua

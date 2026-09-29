@@ -556,7 +556,16 @@ local function ApplyHiddenBlizzard()
     ApplyEditModeOverlaySuppression()
 end
 
-local raidStyleSwitchAttempted = false
+-- A single failed attempt used to permanently give up (raidStyleSwitchAttempted = true
+-- forever), including for the two API-existence checks below -- but on WoW Forever,
+-- Blizzard_EditMode/the Enum.EditMode* table can simply not be loaded yet at the point
+-- GROUP_ROSTER_UPDATE first fires (confirmed by a user still stuck on tainted traditional
+-- party frames), which isn't a real incompatibility, just a timing race. Retrying a bounded
+-- number of times (once per TrySuppressForGroup pass, e.g. every roster change) instead
+-- gives the API a chance to actually be there by the next attempt, while still not retrying
+-- forever if it genuinely never shows up on some build.
+local MAX_RAID_STYLE_SWITCH_ATTEMPTS = 10
+local raidStyleSwitchAttempts = 0
 
 -- Traditional (portrait-style) party frames are secure-templated for click-casting,
 -- and every taint-avoidance approach tried for them (alpha, UnregisterAllEvents,
@@ -569,11 +578,12 @@ local raidStyleSwitchAttempted = false
 -- pcall-guarded and existence-checked: on any WoW build where this API doesn't match
 -- (e.g. a Midnight API change), this just does nothing instead of erroring.
 local function DebugRaidStyleSwitch(reason)
-    F.Debug("|cff888888[RaidStyleSwitch debug]|r " .. reason)
+    F.Debug("|cff888888[RaidStyleSwitch debug]|r " .. reason ..
+        " (attempt " .. raidStyleSwitchAttempts .. "/" .. MAX_RAID_STYLE_SWITCH_ATTEMPTS .. ")")
 end
 
 local function TryEnableRaidStylePartyFrames()
-    if raidStyleSwitchAttempted then return false end
+    if raidStyleSwitchAttempts >= MAX_RAID_STYLE_SWITCH_ATTEMPTS then return false end
     if InCombatLockdown() then DebugRaidStyleSwitch("skipped: in combat"); return false end
     if not ShouldHideBlizzardParty() then DebugRaidStyleSwitch("skipped: hideBlizzardParty is off"); return false end
     -- NOTE: deliberately NOT gating on IsTraditionalPartyStyleActive() (PartyFrame:IsShown())
@@ -582,14 +592,14 @@ local function TryEnableRaidStylePartyFrames()
     -- always false regardless of the actual Edit Mode setting. The setting value read
     -- from C_EditMode below is the actual source of truth and isn't affected by that.
     if not (C_EditMode and C_EditMode.GetLayouts and C_EditMode.SaveLayouts) then
-        raidStyleSwitchAttempted = true
+        raidStyleSwitchAttempts = raidStyleSwitchAttempts + 1
         DebugRaidStyleSwitch("aborted: C_EditMode.GetLayouts/SaveLayouts missing on this build")
         return false
     end
     if not (Enum and Enum.EditModeSystem and Enum.EditModeUnitFrameSetting
         and Enum.EditModeUnitFrameSetting.UseRaidStylePartyFrames
         and Enum.EditModeUnitFrameSystemIndices and Enum.EditModeUnitFrameSystemIndices.Party) then
-        raidStyleSwitchAttempted = true
+        raidStyleSwitchAttempts = raidStyleSwitchAttempts + 1
         DebugRaidStyleSwitch("aborted: expected Enum.EditMode* constants missing on this build")
         return false
     end
@@ -678,11 +688,16 @@ local function TryEnableRaidStylePartyFrames()
         end
         return false, "unknown"
     end)
-    raidStyleSwitchAttempted = true
+    raidStyleSwitchAttempts = raidStyleSwitchAttempts + 1
 
     if not ok then
         DebugRaidStyleSwitch("pcall errored: " .. tostring(switched))
         return false
+    end
+    if switched or why == "setting already 1 (raid-style already on?)" then
+        -- Conclusive outcome (switched it ourselves, or it's already on) -- no point
+        -- retrying further.
+        raidStyleSwitchAttempts = MAX_RAID_STYLE_SWITCH_ATTEMPTS
     end
     if switched then
         F.Print(L["raidStyleSwitchChatMsg"])
@@ -748,7 +763,7 @@ local function HardDisableBlizzardFrames()
 end
 
 TrySuppressForGroup = function()
-    if not raidStyleSwitchAttempted then
+    if raidStyleSwitchAttempts < MAX_RAID_STYLE_SWITCH_ATTEMPTS then
         C_Timer.After(0, TryEnableRaidStylePartyFrames)
     end
     if F.IsEditModeOpen() then

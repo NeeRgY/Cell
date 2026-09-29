@@ -1,7 +1,7 @@
 local addonName, Cell = ...
 
 -- number of built-in indicators
-Cell.defaults.builtIns = 31
+Cell.defaults.builtIns = 32
 
 Cell.defaults.indicatorIndices = {
     ["nameText"] = 1,
@@ -31,10 +31,11 @@ Cell.defaults.indicatorIndices = {
     ["raidDebuffs"] = 25,
     ["privateAuras"] = 26,
     ["targetedSpells"] = 27,
-    ["targetCounter"] = 28,
-    ["crowdControls"] = 29,
-    ["actions"] = 30,
-    ["missingBuffs"] = 31,
+    ["targetedSpellBars"] = 28,
+    ["targetCounter"] = 29,
+    ["crowdControls"] = 30,
+    ["actions"] = 31,
+    ["missingBuffs"] = 32,
 }
 
 Cell.defaults.layout = {
@@ -527,6 +528,22 @@ Cell.defaults.layout = {
             ["orientation"] = "left-to-right",
         }, -- 27
         {
+            ["name"] = "Targeted Spell Bars",
+            ["indicatorName"] = "targetedSpellBars",
+            ["type"] = "built-in",
+            ["enabled"] = false,
+            ["where"] = "both",
+            ["sortMode"] = "startTime",
+            ["showIcon"] = true,
+            ["showTargetText"] = true,
+            ["showSpellName"] = true,
+            ["num"] = 5,
+            ["size"] = {240, 20},
+            ["orientation"] = "top-to-bottom",
+            ["color"] = {0.70, 0.40, 0.90, 1},
+            ["importantColor"] = {1, 0.85, 0.1, 1},
+        }, -- 28
+        {
             ["name"] = "Target Counter",
             ["indicatorName"] = "targetCounter",
             ["type"] = "built-in",
@@ -540,7 +557,7 @@ Cell.defaults.layout = {
                 ["pve"] = false,
                 ["pvp"] = true,
             },
-        }, -- 28
+        }, -- 29
         {
             ["name"] = "Crowd Controls",
             ["indicatorName"] = "crowdControls",
@@ -558,14 +575,14 @@ Cell.defaults.layout = {
             },
             ["dispellableByMe"] = false,
             ["orientation"] = "left-to-right",
-        }, -- 29
+        }, -- 30
         {
             ["name"] = "Actions",
             ["indicatorName"] = "actions",
             ["type"] = "built-in",
             ["enabled"] = true,
             ["speed"] = 1,
-        }, -- 30
+        }, -- 31
         {
             ["name"] = "Missing Buffs",
             ["indicatorName"] = "missingBuffs",
@@ -575,7 +592,7 @@ Cell.defaults.layout = {
             ["frameLevel"] = 10,
             ["size"] = {13, 13},
             ["orientation"] = "right-to-left",
-        }, -- 31
+        }, -- 32
     },
 }
 
