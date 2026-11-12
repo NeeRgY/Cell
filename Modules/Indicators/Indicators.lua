@@ -287,6 +287,13 @@ local function InitIndicator(indicatorName)
         indicator.preview = indicator.preview or CreateFrame("Frame", nil, previewButton)
         indicator.preview:SetAllPoints(indicator)
 
+    elseif indicatorName == "levelText" then
+        local lvl = UnitEffectiveLevel and UnitEffectiveLevel("player") or UnitLevel("player")
+        -- Preview always shows a concrete number -- a secret/unknown player level here would
+        -- otherwise leave the settings preview blank with nothing to compare formats against.
+        F.BD(previewButton).states.level = (F.IsValueNonSecret(lvl) and type(lvl) == "number" and lvl > 0) and lvl or 60
+        indicator:UpdateLevel()
+
     elseif indicatorName == "statusText" then
         local count = 2
         local maxCount = Cell.isRetail and 9 or 6
@@ -958,6 +965,10 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
                 if t["font"] then
                     indicator:SetFont(unpack(t["font"]))
                 end
+                -- update levelFormat
+                if t["levelFormat"] and indicator.SetLevelFormat then
+                    indicator:SetLevelFormat(t["levelFormat"])
+                end
                 -- update color
                 if t["color"] then
                     if t["indicatorName"] == "nameText" or t["indicatorName"] == "healthText" or t["indicatorName"] == "powerText" then
@@ -1184,6 +1195,10 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
             if indicator.isCustomText and indicator.enabled then
                 indicator:Hide()
                 indicator:Show()
+            end
+        elseif setting == "levelFormat" then
+            if indicator.SetLevelFormat then
+                indicator:SetLevelFormat(value)
             end
         elseif setting == "color" then
             if indicatorName == "nameText" or indicatorName == "healthText" or indicatorName == "powerText" then
@@ -1993,6 +2008,7 @@ local midnightDurationVisibility = Cell.isMidnight and "durationVisibilitySimple
 if Cell.isRetail or Cell.isMists then
     indicatorSettings = {
         ["nameText"] = {"enabled", "color-class", "textWidth", "checkbutton:showGroupNumber", "vehicleNamePosition", "position", "frameLevel", "font-noOffset"},
+        ["levelText"] = {"enabled", "levelFormat", "color", "position", "frameLevel", "font-noOffset"},
         ["statusText"] = {"enabled", "checkbutton:showTimer", "checkbutton2:showBackground", "statusColors", "statusPosition", "frameLevel", "font-noOffset"},
         ["healthText"] = {"|cffff7727"..L["MODERATE CPU USAGE"], "enabled", "healthFormat", "position", "frameLevel", "font-noOffset"},
         ["powerText"] = {"enabled", "color-power", "powerFormat", "powerTextFilters", "position", "frameLevel", "font-noOffset"},
@@ -2068,11 +2084,17 @@ if Cell.isRetail or Cell.isMists then
     -- UnitSpellTargetName, C_Spell.IsSpellImportant).
     if Cell.isRetail then
         indicatorSettings["targetedSpellBars"] = {"|cffb7b7b7"..L["Shows one floating bar per tracked enemy cast, with its target's name -- doesn't try to highlight the targeted unit's own frame like \"Targeted Spells\" does. Every cast is shown; the spell list below and \"important\" casts (Blizzard's own flag, mostly Mythic+/raid mechanics) only affect sorting and the color marking, never whether something shows at all."], "enabled", "targetedSpellBarsPreview", "targetedSpellBarsWhere", "targetedSpellBarsSort", "checkbutton:showIcon", "checkbutton2:showTargetText", "num:20", "targetedSpellBarsSize", "orientation", "color-alpha", "targetedSpellBarsImportantColor", "targetedSpellsList", "targetedSpellBarsListInfo"}
+
+        -- Mirrors Blizzard's own raid/party-frame ping marker onto the unit button. Retail
+        -- only -- relies on the ping icon Blizzard's own (hidden) compact frames carry, which
+        -- didn't exist before the ping system's client-side rollout.
+        indicatorSettings["pingIcon"] = {"|cffb7b7b7"..L["Shows Blizzard's own ping marker (Attack, Warning, On My Way, ...) on the unit's Cell frame when a group member pings them. Requires Blizzard's hidden default raid frames to keep running in the background -- toggling this on after \"Hide Blizzard Raid/Party Frames\" already stripped their events needs a /reload."], "enabled", "size-square", "position", "frameLevel"}
     end
 
 elseif Cell.isCata or Cell.isWrath then
     indicatorSettings = {
         ["nameText"] = {"enabled", "color-class", "textWidth", "checkbutton:showGroupNumber", "vehicleNamePosition", "position", "frameLevel", "font-noOffset"},
+        ["levelText"] = {"enabled", "levelFormat", "color", "position", "frameLevel", "font-noOffset"},
         ["statusText"] = {"enabled", "checkbutton:showTimer", "checkbutton2:showBackground", "statusColors", "statusPosition", "frameLevel", "font-noOffset"},
         ["healthText"] = {"|cffff7727"..L["MODERATE CPU USAGE"], "enabled", "healthFormat", "position", "frameLevel", "font-noOffset"},
         ["powerText"] = {"enabled", "color-power", "powerFormat", "powerTextFilters", "position", "frameLevel", "font-noOffset"},
@@ -2113,6 +2135,7 @@ elseif Cell.isCata or Cell.isWrath then
 elseif Cell.isVanilla or Cell.isTBC then
     indicatorSettings = {
         ["nameText"] = {"enabled", "color-class", "textWidth", "checkbutton:showGroupNumber", "vehicleNamePosition", "position", "frameLevel", "font-noOffset"},
+        ["levelText"] = {"enabled", "levelFormat", "color", "position", "frameLevel", "font-noOffset"},
         ["statusText"] = {"enabled", "checkbutton:showTimer", "checkbutton2:showBackground", "statusColors", "statusPosition", "frameLevel", "font-noOffset"},
         ["healthText"] = {"|cffff7727"..L["MODERATE CPU USAGE"], "enabled", "healthFormat", "position", "frameLevel", "font-noOffset"},
         ["powerText"] = {"enabled", "color-power", "powerFormat", "powerTextFilters", "position", "frameLevel", "font-noOffset"},

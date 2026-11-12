@@ -426,6 +426,12 @@ local function ResetIndicators()
                 I.EnableTargetedSpellBars(t["enabled"])
             end
 
+        -- update pingIcon
+        elseif t["indicatorName"] == "pingIcon" then
+            if I.EnablePingIcon then
+                I.EnablePingIcon(t["enabled"])
+            end
+
         -- update actions
         elseif t["indicatorName"] == "actions" then
             I.EnableActions(t["enabled"])
@@ -583,6 +589,10 @@ local function HandleIndicators(b)
                 end
             end
         end
+        -- update levelFormat
+        if t["levelFormat"] and indicator.SetLevelFormat then
+            indicator:SetLevelFormat(t["levelFormat"])
+        end
         -- update color
         if t["color"] and t["indicatorName"] ~= "nameText" and t["indicatorName"] ~="powerText" and indicator.SetColor then
             indicator:SetColor(unpack(t["color"]))
@@ -698,7 +708,7 @@ local function HandleIndicators(b)
 
         -- init
         -- update name visibility
-        if t["indicatorName"] == "nameText" or t["indicatorName"] == "healthText" then
+        if t["indicatorName"] == "nameText" or t["indicatorName"] == "healthText" or t["indicatorName"] == "levelText" then
             if t["enabled"] then
                 indicator:Show()
             else
@@ -1010,6 +1020,14 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
                         BD(b).indicators[indicatorName]:Hide()
                     end
                 end, true)
+            elseif indicatorName == "levelText" then
+                F.IterateAllUnitButtons(function(b)
+                    if value then
+                        BD(b).indicators[indicatorName]:Show()
+                    else
+                        BD(b).indicators[indicatorName]:Hide()
+                    end
+                end, true)
             elseif indicatorName == "statusText" then
                 F.IterateAllUnitButtons(function(b)
                     B.UpdateStatusText(b)
@@ -1201,6 +1219,11 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
                     B.UpdatePowerText(b)
                 end, true)
             end
+        elseif setting == "levelFormat" then
+            F.IterateAllUnitButtons(function(b)
+                local indicator = BD(b).indicators[indicatorName]
+                indicator:SetLevelFormat(value)
+            end, true)
         elseif setting == "color" then
             if indicatorName == "nameText" then
                 indicatorColors[indicatorName] = value
@@ -3179,9 +3202,9 @@ UnitButton_UpdateLeader = function(self, event)
             return
         end
 
-        local isLeader = UnitIsGroupLeader(unit)
+        local isLeader = F.IsKnownTrue(UnitIsGroupLeader(unit))
         BD(self).states.isLeader = isLeader
-        local isAssistant = UnitIsGroupAssistant(unit) and IsInRaid()
+        local isAssistant = F.IsKnownTrue(UnitIsGroupAssistant(unit)) and IsInRaid()
         BD(self).states.isAssistant = isAssistant
 
         leaderIcon:SetIcon(isLeader, isAssistant)
@@ -4128,6 +4151,18 @@ local function UnitButton_UpdateName(self)
     BD(self).indicators.nameText:UpdateName()
 end
 
+local function UnitButton_UpdateLevel(self)
+    local unit = BD(self).states.unit
+    if not unit then return end
+
+    -- Field-confirmed: this can come back a secret number for some units on this client.
+    -- Stored as-is and never inspected here -- UpdateLevel() only ever hands it to a
+    -- secret-safe sink, never compares/branches on it directly.
+    BD(self).states.level = UnitEffectiveLevel and UnitEffectiveLevel(unit) or UnitLevel(unit)
+
+    BD(self).indicators.levelText:UpdateLevel()
+end
+
 UnitButton_UpdateNameTextColor = function(self)
     local unit = BD(self).states.unit
     if not unit then return end
@@ -4320,6 +4355,7 @@ Cell_._updatePowerText = UnitButton_UpdatePowerText
 Cell_._updatePowerTextColor = UnitButton_UpdatePowerTextColor
 Cell_._updateNameTextColor = UnitButton_UpdateNameTextColor
 Cell_._updateName = UnitButton_UpdateName
+Cell_._updateLevel = UnitButton_UpdateLevel
 Cell_._updateVehicleStatus = UnitButton_UpdateVehicleStatus
 Cell_._updateHealthMax = UnitButton_UpdateHealthMax
 Cell_._updateHealth = UnitButton_UpdateHealth
@@ -4379,6 +4415,7 @@ local UnitButton_UpdatePowerText = Cell_._updatePowerText
 local UnitButton_UpdatePowerTextColor = Cell_._updatePowerTextColor
 local UnitButton_UpdateNameTextColor = Cell_._updateNameTextColor
 local UnitButton_UpdateName = Cell_._updateName
+local UnitButton_UpdateLevel = Cell_._updateLevel
 local UnitButton_UpdateVehicleStatus = Cell_._updateVehicleStatus
 local UnitButton_UpdateHealthMax = Cell_._updateHealthMax
 local UnitButton_UpdateHealth = Cell_._updateHealth
@@ -4520,6 +4557,7 @@ local UnitButton_UpdateAll = function(self)
 
     UnitButton_UpdateVehicleStatus(self)
     UnitButton_UpdateName(self)
+    UnitButton_UpdateLevel(self)
     UnitButton_UpdateNameTextColor(self)
     UnitButton_UpdateHealthTextColor(self)
     UnitButton_UpdateHealthMax(self)
@@ -4613,6 +4651,7 @@ local UNIT_TRACKER_EVENTS = {
     "UNIT_TARGET",
     "READY_CHECK_CONFIRM",
     "UNIT_PORTRAIT_UPDATE",
+    "UNIT_LEVEL",
 }
 
 local function EnsureButtonTracker(button)
@@ -4830,6 +4869,9 @@ UnitButton_OnEvent = function(self, event, unit, arg, arg2, ...)
             UnitButton_UpdateHealthColor(self)
             UnitButton_UpdateHealthTextColor(self)
             UnitButton_UpdatePowerTextColor(self)
+
+        elseif event == "UNIT_LEVEL" then
+            UnitButton_UpdateLevel(self)
 
         elseif event == "UNIT_MAXHEALTH" then
             UnitButton_UpdateHealthMax(self)
@@ -5312,10 +5354,10 @@ UnitButton_OnTick = function(self)
                     Cell.vars.guids[guid] = BD(self).states.unit
                 end
 
-                if UnitIsPlayer(BD(self).states.unit) then
+                if F.IsKnownTrue(UnitIsPlayer(BD(self).states.unit)) then
                     local name = GetUnitName(BD(self).states.unit, true)
                     if (name and BD(self).__nameRetries and BD(self).__nameRetries >= 4) or 
-                       (name and name ~= UNKNOWN and name ~= UNKNOWNOBJECT) then
+                       (name and (not F.IsValueNonSecret(name) or (name ~= UNKNOWN and name ~= UNKNOWNOBJECT))) then
                         BD(self).__unitName = name
                         if not BD(self).isSpotlight and F.IsValueNonSecret(name) then 
                             Cell.vars.names[name] = BD(self).states.unit 
@@ -6098,6 +6140,10 @@ function CellUnitButton_OnLoad(button)
     BD(button).widgets = {}
     BD(button).states = {}
     BD(button).indicators = {}
+    -- legacy field names used by user snippets from older Cell versions (same tables, not copies)
+    button.widgets = BD(button).widgets
+    button.states = BD(button).states
+    button.indicators = BD(button).indicators
 
     if Cell.isMidnight and CreateUnitHealPredictionCalculator then
         BD(button).widgets.healthCalculator = CreateUnitHealPredictionCalculator()
@@ -6413,6 +6459,7 @@ function CellUnitButton_OnLoad(button)
 
     -- indicators
     I.CreateNameText(button)
+    I.CreateLevelText(button)
     I.CreateStatusText(button)
     I.CreateHealthText(button)
     I.CreatePowerText(button)
@@ -6437,6 +6484,7 @@ function CellUnitButton_OnLoad(button)
     I.CreatePrivateAuras(button)
     I.CreateTargetedSpells(button)
     I.CreateTargetedSpellBars(button)
+    I.CreatePingIcon(button)
     I.CreateTargetCounter(button)
     I.CreateCrowdControls(button)
     I.CreateActions(button)

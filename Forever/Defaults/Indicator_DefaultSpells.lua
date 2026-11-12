@@ -1122,22 +1122,35 @@ local drinks = {
     369162, -- 饮用 - Drink
     456574, -- 燧烬蜜露 - Cinder Nectar
     461063, -- 静默省思（土灵）- Quiet Contemplation (Earthen)
+    -- Vanilla "Drink" ranks 2-6 and "Food" ranks 1-6
+    431, 432, 1133, 1135, 1137,
+    433, 434, 435, 1127, 1129, 1131,
 }
 
-do
-    local temp = {}
-    for _, id in pairs(drinks) do
-        local name = F.GetSpellInfo(id)
-        if name then
-            temp[name] = true
-        end
-    end
-    drinks = temp
+-- Matched by spell ID first. The name table is only a fallback for ranks/variants not listed,
+-- and is built lazily because spell names may not be available yet while this file loads.
+local drinkIds, drinkNames, namesBuilt = {}, {}, false
+for _, id in pairs(drinks) do
+    drinkIds[id] = true
 end
 
-function I.IsDrinking(name)
+local function BuildDrinkNames()
+    for id in pairs(drinkIds) do
+        local name = F.GetSpellInfo(id)
+        if name then
+            drinkNames[name] = true
+        end
+    end
+    namesBuilt = next(drinkNames) ~= nil
+end
+
+function I.IsDrinking(name, spellId)
+    if spellId and F.IsValueNonSecret(spellId) and drinkIds[spellId] then
+        return true
+    end
     if not F.IsValueNonSecret(name) then return end
-    return drinks[name]
+    if not namesBuilt then BuildDrinkNames() end
+    return drinkNames[name]
 end
 
 -------------------------------------------------

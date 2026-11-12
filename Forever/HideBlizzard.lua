@@ -57,6 +57,22 @@ local function ShouldHideBlizzardRaidManager()
     return CellDB and CellDB["general"] and CellDB["general"]["hideBlizzardRaidManager"]
 end
 
+-- Ping Icon (Indicators/PingIcon.lua) hooks the ping icon Blizzard already builds into its own
+-- (hidden) compact frames, which only keeps working while those frames keep receiving events.
+-- Stripping events is a CPU optimization, not a correctness requirement, so it's the one that
+-- gives way while Ping Icon is on. Toggling it on after events were already stripped needs a
+-- /reload -- there is no clean way to restore only the events Blizzard originally registered.
+local function ShouldKeepPingEvents()
+    local layoutTable = Cell.vars.currentLayoutTable
+    if not (layoutTable and layoutTable.indicators) then return false end
+    for _, t in pairs(layoutTable.indicators) do
+        if t.indicatorName == "pingIcon" then
+            return t.enabled == true
+        end
+    end
+    return false
+end
+
 local function IsTraditionalPartyStyleActive()
     local pf = _G.PartyFrame
     if not (pf and pf.IsShown) then return false end
@@ -371,7 +387,9 @@ local function QuietCompactMember(frame)
     -- reference as part of its own setup, e.g. frame.updateAllEvent tracks which
     -- event that is). UnregisterAllEvents alone makes the existing Blizzard
     -- handler a no-op without ever putting Cell's code on that call stack.
-    pcall(frame.UnregisterAllEvents, frame)
+    if not ShouldKeepPingEvents() then
+        pcall(frame.UnregisterAllEvents, frame)
+    end
     pcall(function()
         if frame.SetScript then
             frame:SetScript("OnUpdate", nil)
@@ -457,7 +475,9 @@ end
 QuietCompactParty = function()
     local cpf = _G.CompactPartyFrame
     if cpf and not FrameIsForbidden(cpf) then
-        pcall(cpf.UnregisterAllEvents, cpf)
+        if not ShouldKeepPingEvents() then
+            pcall(cpf.UnregisterAllEvents, cpf)
+        end
         ShrinkContainer(cpf)
         SetFrameAlpha(cpf.title, 0)
         SetFrameAlpha(cpf.borderFrame, 0)
@@ -487,7 +507,9 @@ local function QuietCompactRaid()
         -- reparenting it out taints that shared managed-frame system (cell
         -- bugs 01-07). Alpha/scale + dead events is the taint-safe way to
         -- suppress it.
-        pcall(container.UnregisterAllEvents, container)
+        if not ShouldKeepPingEvents() then
+            pcall(container.UnregisterAllEvents, container)
+        end
         ShrinkContainer(container)
     end
     for i = 1, 8 do
@@ -577,12 +599,28 @@ local raidStyleSwitchAttempts = 0
 -- party frames via the Edit Mode API the first time this is detected. Every step is
 -- pcall-guarded and existence-checked: on any WoW build where this API doesn't match
 -- (e.g. a Midnight API change), this just does nothing instead of erroring.
+local lastRaidStyleReason
+local raidStyleSwitchConclusive = false
 local function DebugRaidStyleSwitch(reason)
+    lastRaidStyleReason = reason
     F.Debug("|cff888888[RaidStyleSwitch debug]|r " .. reason ..
         " (attempt " .. raidStyleSwitchAttempts .. "/" .. MAX_RAID_STYLE_SWITCH_ATTEMPTS .. ")")
 end
 
+local TryEnableRaidStylePartyFramesOnce
+
+-- tell the user once when all attempts failed
 local function TryEnableRaidStylePartyFrames()
+    local before = raidStyleSwitchAttempts
+    local result = TryEnableRaidStylePartyFramesOnce()
+    if not result and not raidStyleSwitchConclusive
+        and before < MAX_RAID_STYLE_SWITCH_ATTEMPTS and raidStyleSwitchAttempts >= MAX_RAID_STYLE_SWITCH_ATTEMPTS then
+        F.Print(L["raidStyleSwitchFailedMsg"]:format(tostring(lastRaidStyleReason or "unknown reason")))
+    end
+    return result
+end
+
+TryEnableRaidStylePartyFramesOnce = function()
     if raidStyleSwitchAttempts >= MAX_RAID_STYLE_SWITCH_ATTEMPTS then return false end
     if InCombatLockdown() then DebugRaidStyleSwitch("skipped: in combat"); return false end
     if not ShouldHideBlizzardParty() then DebugRaidStyleSwitch("skipped: hideBlizzardParty is off"); return false end
@@ -609,11 +647,40 @@ local function TryEnableRaidStylePartyFrames()
         if not (layoutInfo and layoutInfo.layouts and layoutInfo.activeLayout) then
             return false, "GetLayouts() returned no usable layoutInfo/activeLayout"
         end
-        -- activeLayout isn't a positional index into .layouts. Confirmed live: Blizzard reserves
-        -- IDs 1-2 for the two built-in presets ("Modern"/"Klassisch"), which are NOT included in
-        -- .layouts -- only custom layouts are, starting at ID 3. So .layouts[activeLayout - 2] is
-        -- the active entry (verified: activeLayout=6, 4 custom layouts, 4th one active -> 6-2=4).
-        local activeLayout = layoutInfo.layouts[layoutInfo.activeLayout - 2]
+        -- activeLayout also counts Blizzard's preset layouts, .layouts only holds custom ones.
+        -- The number of presets differs per client build (2 or 3).
+        local activeLayout
+        local activeIndex = layoutInfo.activeLayout
+
+        -- match by name/type first
+        local mgr = _G.EditModeManagerFrame
+        if mgr and mgr.GetActiveLayoutInfo then
+            local okInfo, info = pcall(mgr.GetActiveLayoutInfo, mgr)
+            if okInfo and type(info) == "table" and info.layoutName then
+                for _, entry in ipairs(layoutInfo.layouts) do
+                    if entry.layoutName == info.layoutName and entry.layoutType == info.layoutType then
+                        activeLayout = entry
+                        break
+                    end
+                end
+            end
+        end
+
+        -- then via the preset count
+        if not activeLayout and Enum.EditModePresetLayouts then
+            local presets = 0
+            for _ in pairs(Enum.EditModePresetLayouts) do
+                presets = presets + 1
+            end
+            if presets > 0 then
+                activeLayout = layoutInfo.layouts[activeIndex - presets]
+            end
+        end
+
+        -- older clients: 2 presets
+        if not activeLayout then
+            activeLayout = layoutInfo.layouts[activeIndex - 2]
+        end
         if not activeLayout then
             -- Fallback in case the "2 reserved preset IDs" assumption doesn't hold on some
             -- account/build: try common per-entry ID/active-flag fields before giving up.
@@ -671,10 +738,8 @@ local function TryEnableRaidStylePartyFrames()
                             -- setting to SavedVariables either way; Blizzard picks it up the next
                             -- time it lays out the party frames (next login/reload at the latest,
                             -- possibly sooner via its own PLAYER_ENTERING_WORLD/EditMode refresh).
+                            -- don't call ApplyChanges here, it would taint Edit Mode. The reload popup applies the layout.
                             C_EditMode.SaveLayouts(layoutInfo)
-                            if EditModeManagerFrame and EditModeManagerFrame.ApplyChanges then
-                                pcall(EditModeManagerFrame.ApplyChanges, EditModeManagerFrame)
-                            end
                             return true
                         end
                     end
@@ -698,6 +763,7 @@ local function TryEnableRaidStylePartyFrames()
         -- Conclusive outcome (switched it ourselves, or it's already on) -- no point
         -- retrying further.
         raidStyleSwitchAttempts = MAX_RAID_STYLE_SWITCH_ATTEMPTS
+        raidStyleSwitchConclusive = true
     end
     if switched then
         F.Print(L["raidStyleSwitchChatMsg"])
@@ -733,10 +799,11 @@ local function HardDisableBlizzardFrames()
     end
 
     pcall(function()
-        if ShouldHideBlizzardParty() and ShouldHideBlizzardRaid() then
+        local keepPingEvents = ShouldKeepPingEvents()
+        if ShouldHideBlizzardParty() and ShouldHideBlizzardRaid() and not keepPingEvents then
             UIParent:UnregisterEvent("GROUP_ROSTER_UPDATE")
         end
-        if ShouldHideBlizzardRaid() and CompactRaidFrameContainer then
+        if ShouldHideBlizzardRaid() and CompactRaidFrameContainer and not keepPingEvents then
             CompactRaidFrameContainer:UnregisterAllEvents()
         end
         if ShouldHideBlizzardRaidManager() and CompactRaidFrameManager then
@@ -748,9 +815,10 @@ local function HardDisableBlizzardFrames()
         end
         if ShouldHideBlizzardParty() then
             InstallPartyMemberNoops()
-            if CompactPartyFrame then
+            if CompactPartyFrame and not keepPingEvents then
                 CompactPartyFrame:UnregisterAllEvents()
             end
+            -- Ping Icon only needs the compact frames, never PartyFrame
             if PartyFrame then
                 PartyFrame:UnregisterAllEvents()
             end

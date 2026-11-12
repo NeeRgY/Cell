@@ -31,13 +31,16 @@ local FOREVER_ICON = {
 function F.ClientIcon(icon)
     return FOREVER_ICON[icon] or icon
 end
-Cell.isRetail = WOW_PROJECT_ID == WOW_PROJECT_MAINLINE
-Cell.isMidnight = Cell.isRetail
-Cell.isVanilla = WOW_PROJECT_ID == WOW_PROJECT_CLASSIC
-Cell.isTBC = WOW_PROJECT_ID == WOW_PROJECT_BURNING_CRUSADE_CLASSIC
-Cell.isWrath = WOW_PROJECT_ID == WOW_PROJECT_WRATH_CLASSIC
-Cell.isCata = WOW_PROJECT_ID == WOW_PROJECT_CATACLYSM_CLASSIC
-Cell.isMists = WOW_PROJECT_ID == WOW_PROJECT_MISTS_CLASSIC
+-- This file only ever loads on Forever, which is Mainline-API based. Its WOW_PROJECT_ID changed
+-- with a client update (no longer equals WOW_PROJECT_MAINLINE), so the flavor flags are fixed
+-- here instead of derived from it.
+Cell.isRetail = true
+Cell.isMidnight = true
+Cell.isVanilla = false
+Cell.isTBC = false
+Cell.isWrath = false
+Cell.isCata = false
+Cell.isMists = false
 Cell.isTWW = LE_EXPANSION_LEVEL_CURRENT == LE_EXPANSION_WAR_WITHIN
 
 -- Forever has no specialization system: shim the API to "no spec" (call sites already handle it).
@@ -911,9 +914,10 @@ end
 -- end
 
 function F.UnitFullName(unit)
-    if not unit or not UnitIsPlayer(unit) then return end
+    if not unit or not F.IsKnownTrue(UnitIsPlayer(unit)) then return end
 
     local name = GetUnitName(unit, true)
+    if name and not F.IsValueNonSecret(name) then return name end -- secret string: no string ops
 
     --? name might be nil in some cases?
     if name and not string.find(name, "-") then
@@ -1428,7 +1432,7 @@ function F.GetUnitClassColor(unit, class, guid)
     class = F.ResolveUnitClassFile(unit, class) or class or select(2, UnitClass(unit))
     guid = guid or UnitGUID(unit)
 
-    if UnitIsPlayer(unit) or IsTruthyOrSecret(UnitInPartyIsAI(unit)) then -- player
+    if IsTruthyOrSecret(UnitIsPlayer(unit)) or IsTruthyOrSecret(UnitInPartyIsAI(unit)) then -- player
         return F.GetClassColor(class)
     elseif F.IsPet(guid, unit) then -- pet
         return 0.5, 0.5, 1
@@ -1718,7 +1722,7 @@ function F.GetTargetUnitID(target)
 
     if not F.UnitInGroup(target) then return end
 
-    if UnitIsPlayer(target) or IsTruthyOrSecret(UnitInPartyIsAI(target)) then
+    if IsTruthyOrSecret(UnitIsPlayer(target)) or IsTruthyOrSecret(UnitInPartyIsAI(target)) then
         for unit in F.IterateGroupMembers() do
             if IsUnitMatchOrSecret(target, unit) then
                 return unit
@@ -1740,7 +1744,7 @@ function F.GetTargetPetID(target)
 
     if not F.UnitInGroup(target) then return end
 
-    if UnitIsPlayer(target) or IsTruthyOrSecret(UnitInPartyIsAI(target)) then
+    if IsTruthyOrSecret(UnitIsPlayer(target)) or IsTruthyOrSecret(UnitInPartyIsAI(target)) then
         for unit in F.IterateGroupMembers() do
             if IsUnitMatchOrSecret(target, unit) then
                 return F.GetPetUnit(unit)

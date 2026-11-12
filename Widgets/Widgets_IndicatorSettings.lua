@@ -2439,6 +2439,54 @@ local function CreateSetting_ColorAlpha(parent)
     return widget
 end
 
+-- Level Text: "Level 10" / "Lvl 10" / "10" prefix dropdown.
+local function CreateSetting_LevelFormat(parent)
+    local widget
+
+    if not settingWidgets["levelFormat"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_LevelFormat", parent, 240, 50)
+        settingWidgets["levelFormat"] = widget
+
+        widget.dropdown = Cell.CreateDropdown(widget, 245)
+        widget.dropdown:SetPoint("TOPLEFT", 5, -20)
+        widget.dropdown:SetItems({
+            {
+                ["text"] = L["Level 10"],
+                ["value"] = "full",
+                ["onClick"] = function() widget.func("full") end,
+            },
+            {
+                ["text"] = L["Lvl 10"],
+                ["value"] = "short",
+                ["onClick"] = function() widget.func("short") end,
+            },
+            {
+                ["text"] = L["10 (number only)"],
+                ["value"] = "number",
+                ["onClick"] = function() widget.func("number") end,
+            },
+        })
+
+        widget.label = widget:CreateFontString(nil, "OVERLAY", font_name)
+        widget.label:SetText(L["Level Format"])
+        widget.label:SetPoint("BOTTOMLEFT", widget.dropdown, "TOPLEFT", 0, 1)
+
+        function widget:SetFunc(func)
+            widget.func = func
+        end
+
+        function widget:SetDBValue(value)
+            local valid = value == "full" or value == "short" or value == "number"
+            widget.dropdown:SetSelectedValue(valid and value or "full")
+        end
+    else
+        widget = settingWidgets["levelFormat"]
+    end
+
+    widget:Show()
+    return widget
+end
+
 -- Targeted Spell Bars: "important cast" glow color. Same shape as CreateSetting_ColorAlpha
 -- above, kept as its own widget/cache key so the indicator can show two independent color
 -- pickers (bar color via the generic "color-alpha", this one for the important-cast glow).
@@ -8851,6 +8899,7 @@ local builders = {
     ["targetedSpellBarsSize"] = CreateSetting_TargetedSpellBarsSize,
     ["targetedSpellBarsImportantColor"] = CreateSetting_TargetedSpellBarsImportantColor,
     ["powerTextFilters"] = CreateSetting_RoleFilters,
+    ["levelFormat"] = CreateSetting_LevelFormat,
 }
 
 function Cell.CreateIndicatorSettings(parent, settingsTable)

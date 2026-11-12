@@ -2047,6 +2047,123 @@ local function StatusText_HideTimer(self, reset)
     end
 end
 
+-------------------------------------------------
+-- level text
+-------------------------------------------------
+function I.CreateLevelText(parent)
+    local levelText = CreateFrame("Frame", parent:GetName().."LevelText", F.BD(parent).widgets.indicatorFrame)
+    F.BD(parent).indicators.levelText = levelText
+    levelText:Hide()
+
+    local text = levelText:CreateFontString(nil, "OVERLAY", "CELL_FONT_STATUS")
+    levelText.text = text
+    text:SetPoint("CENTER")
+
+    levelText.format = "full" -- "full" | "short" | "number"
+
+    function levelText:SetFont(font, size, outline, shadow)
+        font = F.GetFont(font)
+
+        local flags
+        if outline == "None" then
+            flags = ""
+        elseif outline == "Outline" then
+            flags = "OUTLINE"
+        else
+            flags = "OUTLINE,MONOCHROME"
+        end
+
+        text:SetFont(font, size, flags)
+
+        if shadow then
+            text:SetShadowOffset(1, -1)
+            text:SetShadowColor(0, 0, 0, 1)
+        else
+            text:SetShadowOffset(0, 0)
+            text:SetShadowColor(0, 0, 0, 0)
+        end
+
+        local point = levelText:GetPoint(1)
+        text:ClearAllPoints()
+        if point and string.find(point, "LEFT") then
+            text:SetPoint("LEFT")
+        elseif point and string.find(point, "RIGHT") then
+            text:SetPoint("RIGHT")
+        else
+            text:SetPoint("CENTER")
+        end
+
+        levelText:UpdateSize()
+    end
+
+    -- The frame itself is otherwise never sized (P.Point-based positioning doesn't need it,
+    -- but a 0x0 frame was left with no on-screen footprint at all) -- resize it to match the
+    -- FontString's own rendered bounds every time the text or font changes, same idea as
+    -- Name Text's UpdateName does for its own frame.
+    function levelText:UpdateSize()
+        local width, height = F.GetWidth(text), F.GetHeight(text)
+        levelText:SetSize(max(width, 1), max(height, 1))
+    end
+
+    levelText._SetPoint = levelText.SetPoint
+    function levelText:SetPoint(point, relativeTo, relativePoint, x, y)
+        text:ClearAllPoints()
+        if point and string.find(point, "LEFT") then
+            text:SetPoint("LEFT")
+        elseif point and string.find(point, "RIGHT") then
+            text:SetPoint("RIGHT")
+        else
+            text:SetPoint("CENTER")
+        end
+        levelText:_SetPoint(point, relativeTo, relativePoint, x, y)
+    end
+
+    function levelText:SetColor(r, g, b, a)
+        text:SetTextColor(r, g, b, a or 1)
+    end
+
+    function levelText:SetLevelFormat(format)
+        levelText.format = format or "full"
+        levelText:UpdateLevel()
+    end
+
+    function levelText:UpdateLevel()
+        local level = F.BD(parent).states.level
+        if level == nil then
+            text:SetText("")
+            levelText:UpdateSize()
+            return
+        end
+
+        if not F.IsValueNonSecret(level) then
+            -- Field-confirmed: a unit's level can come back a secret number on this client.
+            -- Can't compare it against 0 for the "??" high-level case, but SetFormattedText is
+            -- a secret-safe sink (same idea as SetText/SetTexture elsewhere), so it's handed
+            -- straight through. The format choice itself (full/short/number) is our own UI
+            -- setting, never derived from the secret value, so branching on THAT stays safe.
+            if levelText.format == "short" then
+                text:SetFormattedText("Lvl %d", level)
+            elseif levelText.format == "number" then
+                text:SetFormattedText("%d", level)
+            else
+                text:SetFormattedText("Level %d", level)
+            end
+            levelText:UpdateSize()
+            return
+        end
+
+        local levelStr = (level > 0) and level or "??"
+        if levelText.format == "short" then
+            text:SetFormattedText("Lvl %s", levelStr)
+        elseif levelText.format == "number" then
+            text:SetText(levelStr)
+        else
+            text:SetFormattedText("Level %s", levelStr)
+        end
+        levelText:UpdateSize()
+    end
+end
+
 function I.CreateStatusText(parent)
     local statusText = CreateFrame("Frame", parent:GetName().."StatusText", F.BD(parent).widgets.indicatorFrame)
     F.BD(parent).indicators.statusText = statusText

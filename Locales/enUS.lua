@@ -163,6 +163,27 @@ select(2, ...).L = setmetatable({
     ["CHANGELOGS"] = [[
 
 
+        <h1>r277.9.9.3 - NeRgY</h1>
+        <h2>Retail</h2>
+        <p>* Fixed a Lua error ("attempt to perform boolean test on a secret boolean value") from the Ping Icon indicator that could repeat every time someone pinged while boss or NPC frames were shown.</p>
+        <p>* Fixed Lua errors ("attempt to compare a secret string value" and "attempt to perform boolean test on a secret boolean value") on Spotlight frames showing your target or target of target. They came from the unit name and the group leader check and could repeat hundreds of times.</p>
+        <p>|cffffd200I have also made my own frame addon called Nucleus. It was inspired by Cell but contains no Cell code. It already has new features that Cell does not have, and you can import your Cell profile there. It is available on CurseForge and Wago and has its own Discord. I am working on it very actively to solve all remaining problems and I am happy to take feedback.|r</p>
+        <br/>
+
+        <h1>r277.9.9.2 - NeRgY</h1>
+        <h2>General</h2>
+        <p>* Profiles exported from older Cell versions (r246 and newer) can be imported again. They are no longer rejected as incompatible and get upgraded automatically after the reload.</p>
+        <p>* Code snippets from older Cell versions that use button.indicators, button.widgets or button.states work again.</p>
+        <p>I have also made my own frame addon called Nucleus. It was inspired by Cell but contains no Cell code. It is available on CurseForge and Wago and has its own Discord. I am working on it very actively to solve all remaining problems and I am happy to take feedback.</p>
+        <br/>
+
+        <h1>r277.9.9.1 - NeRgY</h1>
+        <h2>General</h2>
+        <p>+ New indicator: "Level Text". Shows a unit's level on the frame, fully positionable, colorable and resizable, with a "Level Format" dropdown to choose between "Level 10", "Lvl 10" or just "10". Off by default.</p>
+        <h2>Retail</h2>
+        <p>+ New indicator: "Ping Icon". Mirrors Blizzard's own raid-frame ping marker (Attack, Warning, On My Way, ...) onto the unit's Cell frame when a group member pings them. Requires Blizzard's hidden default raid frames to keep running in the background, plus "Show Pings on Raid Frames" enabled in Blizzard's own Ping System options. On by default.</p>
+        <br/>
+
         <h1>r277.9.9 - NeRgY</h1>
         <h2>Retail</h2>
         <p>+ New indicator: "Targeted Spell Bars". Shows one floating, movable bar per tracked enemy cast, with the caster's icon, spell name, a class-colored target name and a countdown -- without trying to guess which raid/party frame to highlight like the old "Targeted Spells" indicator does. Fully configurable: where to show it (raid/party/both), sort order, icon/target-text toggles, max bars, size, colors, an important-cast color, and an optional spell list to sort specific casts to the front. Off by default.</p>

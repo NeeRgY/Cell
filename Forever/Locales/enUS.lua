@@ -29,6 +29,7 @@ select(2, ...).L = setmetatable({
     ["showDispelFrameBorder"] = "Show frame border",
     ["raidStyleSwitchChatMsg"] = "Traditional party frames cause known Blizzard errors (taint). Cell has automatically switched to raid-style party frames to avoid this. A UI reload is required for the change to take effect.",
     ["raidStyleSwitchPopupText"] = "Traditional party frames cause known Blizzard errors.\n\nCell has automatically switched to raid-style party frames to prevent this.\n\nA UI reload is required for the change to take effect.\n ",
+    ["raidStyleSwitchFailedMsg"] = "Could not switch Blizzard's party frames to raid-style automatically (%s). To avoid Lua errors: Esc > Edit Mode > Party Frames > enable \"Use Raid-Style Party Frames\", then /reload.",
     ["nonPlayerAurasTip"] = "Hides lust aftereffects such as Exhaustion, Sated, Forbearance and Temporal Displacement, and Fel Armor. Encounter debuffs stay visible.\nClick again to negate it (only debuffs from a player/pet instead), click a third time to turn it off.",
     ["debuffsCastByMe"] = "Cast By You",
     ["debuffsCastByMeTip"] = "Only shows debuffs that you (or your pet) applied. Click again to negate it (only debuffs NOT applied by you), click a third time to turn it off.",
@@ -166,6 +167,33 @@ select(2, ...).L = setmetatable({
     ["BACKUP_TIPS2"] = "Note for Classic players: Backups do not include Click-Castings and Layout Auto Switch of other characters",
     ["CHANGELOGS"] = [[
 
+
+        <h1>r277.9.9.3-forever - NeRgY</h1>
+        <h2>WoW Forever</h2>
+        <p>* Fixed a Lua error ("attempt to perform boolean test on a secret boolean value") from the Ping Icon indicator that could repeat every time someone pinged while boss or NPC frames were shown.</p>
+        <p>* Fixed Lua errors ("attempt to compare a secret string value" and "attempt to perform boolean test on a secret boolean value") on Spotlight frames showing your target or target of target. They came from the unit name and the group leader check and could repeat hundreds of times.</p>
+        <p>* Fixed the automatic switch to raid-style party frames not finding your active Edit Mode layout on the newest WoW Forever client. This left the classic party frames active and caused "tainted by Cell" Lua errors. If the switch still can't be done, Cell now tells you why in chat.</p>
+        <p>* The classic Blizzard party frame no longer keeps its events while Ping Icon is enabled, which reduces those Lua errors as well.</p>
+        <p>* Fixed party member names staying blank after a /reload on WoW Forever. Cell now redraws the names shortly after login and after group changes.</p>
+        <p>|cffffd200I have also made my own frame addon called Nucleus. It was inspired by Cell but contains no Cell code. It already has new features that Cell does not have, and you can import your Cell profile there. It is available on CurseForge and Wago and has its own Discord. I am working on it very actively to solve all remaining problems and I am happy to take feedback.|r</p>
+        <br/>
+
+        <h1>r277.9.9.2-forever - NeRgY</h1>
+        <h2>WoW Forever</h2>
+        <p>* Fixed Cell failing to load on WoW Forever after the latest client update, which now reports a different project ID. This caused Lua errors on login and missing frames.</p>
+        <p>* Profiles exported from older Cell versions (r246 and newer) can be imported again. They are no longer rejected as incompatible and get upgraded automatically after the reload.</p>
+        <p>* Fixed the AFK status text never showing on WoW Forever.</p>
+        <p>* Fixed the Status Text never showing "Drinking" when a unit is drinking or eating on WoW Forever.</p>
+        <p>* Code snippets from older Cell versions that use button.indicators, button.widgets or button.states work again.</p>
+        <p>I have also made my own frame addon called Nucleus. It was inspired by Cell but contains no Cell code. It is available on CurseForge and Wago and has its own Discord. I am working on it very actively to solve all remaining problems and I am happy to take feedback.</p>
+        <br/>
+
+        <h1>r277.9.9.1-forever - NeRgY</h1>
+        <h2>WoW Forever</h2>
+        <p>+ New indicator: "Level Text". Shows a unit's level on the frame, fully positionable, colorable and resizable, with a "Level Format" dropdown to choose between "Level 10", "Lvl 10" or just "10". Off by default.</p>
+        <p>+ New indicator: "Ping Icon". Shows a group member's ping (Attack, Warning, On My Way, ...) on their Cell frame, mirrored straight from Blizzard's own raid frames. "Show Pings on Raid Frames" needs to be enabled in the Ping System options. On by default.</p>
+        <p>Uses Blizzard's own ping artwork where available. If a ping type doesn't have matching artwork on this client, a bundled icon is shown in its place so the marker never just goes blank.</p>
+        <br/>
 
         <h1>r277.9.9-forever - NeRgY</h1>
         <h2>WoW Forever</h2>

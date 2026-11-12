@@ -173,7 +173,7 @@ local function HandleBuff(self, auraInfo)
             BD(self)._buffs.tankActiveMitigationFound = true
         end
 
-        if hb.enabledIndicators["statusText"] and I.IsDrinking(name) then
+        if hb.enabledIndicators["statusText"] and I.IsDrinking(name, spellId) then
             if not BD(self).indicators.statusText:GetStatus() then
                 BD(self).indicators.statusText:SetStatus("DRINKING")
                 BD(self).indicators.statusText:Show()
@@ -194,3 +194,51 @@ local function HandleBuff(self, auraInfo)
 end
 
 Cell.HandleBuff = HandleBuff
+
+-------------------------------------------------
+-- drinking / eating status
+-------------------------------------------------
+-- Forever runs in the Midnight-style mode where the legacy per-button aura scan (and with it
+-- the "DRINKING" detection inside HandleBuff above) never runs, so drinking is detected here on
+-- its own: out of combat only (auras are readable then), cheap early-outs, no engine hooks.
+local GetAuraDataByIndex = C_UnitAuras and C_UnitAuras.GetAuraDataByIndex
+
+local function UpdateDrinkingStatus(b)
+    if not (hb.enabledIndicators and hb.enabledIndicators["statusText"]) then return end
+    local statusText = BD(b).indicators and BD(b).indicators.statusText
+    if not statusText then return end
+
+    local unit = BD(b).states and BD(b).states.displayedUnit
+    if not unit then return end
+
+    local found = false
+    for i = 1, 40 do
+        local aura = GetAuraDataByIndex(unit, i, "HELPFUL")
+        if not aura then break end
+        if F.IsValueNonSecret(aura.spellId) and I.IsDrinking(aura.name, aura.spellId) then
+            found = true
+            break
+        end
+    end
+
+    local current = statusText:GetStatus()
+    if found then
+        if not current then
+            statusText:SetStatus("DRINKING")
+            statusText:Show()
+        end
+    elseif current == "DRINKING" then
+        statusText:SetStatus()
+    end
+end
+
+if GetAuraDataByIndex then
+    local drinkFrame = CreateFrame("Frame")
+    drinkFrame:RegisterEvent("UNIT_AURA")
+    drinkFrame:SetScript("OnEvent", function(_, _, unit)
+        if not unit or not hb.enabledIndicators or not hb.enabledIndicators["statusText"] then return end
+        if InCombatLockdown() then return end
+        if F.IsAuraRestricted and F.IsAuraRestricted() then return end
+        F.HandleUnitButton("unit", unit, UpdateDrinkingStatus)
+    end)
+end

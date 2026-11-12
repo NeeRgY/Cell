@@ -57,6 +57,22 @@ local function ShouldHideBlizzardRaidManager()
     return CellDB and CellDB["general"] and CellDB["general"]["hideBlizzardRaidManager"]
 end
 
+-- Ping Icon (Indicators/PingIcon.lua) hooks the ping icon Blizzard already builds into its own
+-- (hidden) compact frames, which only keeps working while those frames keep receiving events.
+-- Stripping events is a CPU optimization, not a correctness requirement, so it's the one that
+-- gives way while Ping Icon is on. Toggling it on after events were already stripped needs a
+-- /reload -- there is no clean way to restore only the events Blizzard originally registered.
+local function ShouldKeepPingEvents()
+    local layoutTable = Cell.vars.currentLayoutTable
+    if not (layoutTable and layoutTable.indicators) then return false end
+    for _, t in pairs(layoutTable.indicators) do
+        if t.indicatorName == "pingIcon" then
+            return t.enabled == true
+        end
+    end
+    return false
+end
+
 local function IsTraditionalPartyStyleActive()
     local pf = _G.PartyFrame
     if not (pf and pf.IsShown) then return false end
@@ -371,7 +387,9 @@ local function QuietCompactMember(frame)
     -- reference as part of its own setup, e.g. frame.updateAllEvent tracks which
     -- event that is). UnregisterAllEvents alone makes the existing Blizzard
     -- handler a no-op without ever putting Cell's code on that call stack.
-    pcall(frame.UnregisterAllEvents, frame)
+    if not ShouldKeepPingEvents() then
+        pcall(frame.UnregisterAllEvents, frame)
+    end
     pcall(function()
         if frame.SetScript then
             frame:SetScript("OnUpdate", nil)
@@ -457,7 +475,9 @@ end
 QuietCompactParty = function()
     local cpf = _G.CompactPartyFrame
     if cpf and not FrameIsForbidden(cpf) then
-        pcall(cpf.UnregisterAllEvents, cpf)
+        if not ShouldKeepPingEvents() then
+            pcall(cpf.UnregisterAllEvents, cpf)
+        end
         ShrinkContainer(cpf)
         SetFrameAlpha(cpf.title, 0)
         SetFrameAlpha(cpf.borderFrame, 0)
@@ -487,7 +507,9 @@ local function QuietCompactRaid()
         -- reparenting it out taints that shared managed-frame system (cell
         -- bugs 01-07). Alpha/scale + dead events is the taint-safe way to
         -- suppress it.
-        pcall(container.UnregisterAllEvents, container)
+        if not ShouldKeepPingEvents() then
+            pcall(container.UnregisterAllEvents, container)
+        end
         ShrinkContainer(container)
     end
     for i = 1, 8 do
@@ -718,10 +740,11 @@ local function HardDisableBlizzardFrames()
     end
 
     pcall(function()
-        if ShouldHideBlizzardParty() and ShouldHideBlizzardRaid() then
+        local keepPingEvents = ShouldKeepPingEvents()
+        if ShouldHideBlizzardParty() and ShouldHideBlizzardRaid() and not keepPingEvents then
             UIParent:UnregisterEvent("GROUP_ROSTER_UPDATE")
         end
-        if ShouldHideBlizzardRaid() and CompactRaidFrameContainer then
+        if ShouldHideBlizzardRaid() and CompactRaidFrameContainer and not keepPingEvents then
             CompactRaidFrameContainer:UnregisterAllEvents()
         end
         if ShouldHideBlizzardRaidManager() and CompactRaidFrameManager then
@@ -733,10 +756,10 @@ local function HardDisableBlizzardFrames()
         end
         if ShouldHideBlizzardParty() then
             InstallPartyMemberNoops()
-            if CompactPartyFrame then
+            if CompactPartyFrame and not keepPingEvents then
                 CompactPartyFrame:UnregisterAllEvents()
             end
-            if PartyFrame then
+            if PartyFrame and not keepPingEvents then
                 PartyFrame:UnregisterAllEvents()
             end
         end

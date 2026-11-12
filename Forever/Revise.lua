@@ -3974,6 +3974,50 @@ function F.Revise()
         end
     end
 
+    -- One-time: insert the new "Level Text" indicator (index 2, right after "Name Text") into
+    -- every existing layout. Same dedicated-flag reasoning as above.
+    if not CellDB["addedLevelText"] then
+        CellDB["addedLevelText"] = true
+        local index = Cell.defaults.indicatorIndices.levelText
+        for _, layout in pairs(CellDB["layouts"]) do
+            if type(layout["indicators"]) == "table"
+                and (not layout["indicators"][index] or layout["indicators"][index]["indicatorName"] ~= "levelText") then
+                tinsert(layout.indicators, index, {
+                    ["name"] = "Level Text",
+                    ["indicatorName"] = "levelText",
+                    ["type"] = "built-in",
+                    ["enabled"] = false,
+                    ["position"] = {"BOTTOMRIGHT", "healthBar", "BOTTOMRIGHT", -1, 1},
+                    ["frameLevel"] = 1,
+                    ["font"] = {"Cell ".._G.DEFAULT, 10, "None", true},
+                    ["color"] = {1, 1, 1, 1},
+                    ["levelFormat"] = "full",
+                })
+            end
+        end
+    end
+
+    -- One-time: insert the new "Ping Icon" indicator (index 34, at the end) into every existing
+    -- layout. Same dedicated-flag reasoning as above.
+    if not CellDB["addedPingIcon"] then
+        CellDB["addedPingIcon"] = true
+        local index = Cell.defaults.indicatorIndices.pingIcon
+        for _, layout in pairs(CellDB["layouts"]) do
+            if type(layout["indicators"]) == "table"
+                and (not layout["indicators"][index] or layout["indicators"][index]["indicatorName"] ~= "pingIcon") then
+                tinsert(layout.indicators, index, {
+                    ["name"] = "Ping Icon",
+                    ["indicatorName"] = "pingIcon",
+                    ["type"] = "built-in",
+                    ["enabled"] = false,
+                    ["position"] = {"CENTER", "button", "CENTER", 0, 0},
+                    ["frameLevel"] = 30,
+                    ["size"] = {18, 18},
+                })
+            end
+        end
+    end
+
     CellDB["revise"] = Cell.version
     if CellCharacterDB then
         CellCharacterDB["revise"] = Cell.version
