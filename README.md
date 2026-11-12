@@ -75,6 +75,7 @@ Without their work, this fork would not exist.
 | Client | Status |
 |--------|--------|
 | Retail Midnight (`12.1.0`) | Primary focus |
+| Forever (`1.60.1`) | Supported |
 | Classic Era / Hardcore (`1.15.9`) | Supported |
 | TBC Classic (Anniversary) (`2.5.6`) | Supported |
 | MoP Classic (`5.5.4`) | Supported |
